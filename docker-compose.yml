@@ -1,0 +1,12 @@
+﻿version: "3.8"
+services:
+  api:
+    build: ./backend
+    ports: ["8000:8000"]
+  web:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_BASE=/api
+    ports: ["5173:80"]
+    depends_on: [api]

@@ -2,6 +2,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import json, re, time, sqlite3, datetime
+from fastapi.responses import RedirectResponse
 
 from app.core.paths import (
     SCHEMAS_DIR, SEEDS_DIR, DB_PATH,
@@ -158,3 +159,7 @@ def report(submission_id: str):
     items = [{"kind": k, "at": at, "payload": json.loads(p)} for (k, at, p) in cur.fetchall()]
     conn.close()
     return {"submission_id": submission_id, "events": items}
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse("/docs")
