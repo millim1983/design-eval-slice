@@ -1,0 +1,11 @@
+﻿{
+  "submissions": [
+    {
+      "submission_id": "sub_demo_001",
+      "title": "Poster – Night Jazz",
+      "author_id": "u_demo_alice",
+      "asset_url": "https://example.com/posters/jazz_night.jpg",
+      "meta": {"category": "poster", "colors": ["#121212", "#FFD400"]}
+    }
+  ]
+}

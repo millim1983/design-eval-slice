@@ -1,0 +1,48 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RubricDSL",
+  "type": "object",
+  "required": ["award_id", "version", "criteria", "aggregation"],
+  "properties": {
+    "award_id": {"type": "string"},
+    "version": {"type": "string"},
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "scale", "weight"],
+        "properties": {
+          "id": {"type": "string"},
+          "label": {"type": "string"},
+          "description": {"type": "string"},
+          "scale": {
+            "type": "object",
+            "properties": {
+              "type": {"type": "string", "enum": ["int", "float", "enum"]},
+              "min": {"type": "number"},
+              "max": {"type": "number"},
+              "enum": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "weight": {"type": "number"},
+          "guideline_refs": {"type": "array", "items": {"type": "string"}},
+          "evidence_queries": {"type": "array", "items": {"type": "string"}},
+          "required_checks": {"type": "array", "items": {"type": "string"}},
+          "visibility": {
+            "type": "object",
+            "properties": {
+              "show_model_suggestion_after_initial_score": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+    "aggregation": {
+      "type": "object",
+      "properties": {
+        "method": {"type": "string", "enum": ["weighted_mean", "median", "trimmed_mean"]},
+        "outlier_policy": {"type": "string", "enum": ["none", "trim_10", "trim_20"]}
+      }
+    }
+  }
+}
