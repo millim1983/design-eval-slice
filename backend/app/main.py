@@ -3,11 +3,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import json, re, time, sqlite3, datetime
 from fastapi.responses import RedirectResponse
-
 from app.core.paths import (
     SCHEMAS_DIR, SEEDS_DIR, DB_PATH,
     GUIDELINE_FILE, RUBRIC_FILE, ensure_dirs
 )
+from fastapi import UploadFile, File, Form
+
+
 
 app = FastAPI(title="Design Evaluation Vertical Slice", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -74,6 +76,28 @@ app = FastAPI(title="Design Evaluation Vertical Slice", version="0.1.0", lifespa
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
+import os
+from types import SimpleNamespace
+
+def get_analysis_provider():
+    p = os.getenv("ANALYSIS_PROVIDER", "stub")
+    if p == "ollama":
+        from app.providers.vision_ollama import analyze
+        return SimpleNamespace(analyze=analyze)
+    elif p == "llava_local":
+        from app.providers.llava_local import query_llm
+        return SimpleNamespace(analyze=lambda prompt, img: query_llm(prompt, img))
+    else:
+        from app.providers.vision_stub import analyze
+        return SimpleNamespace(analyze=analyze)
+
+ANALYZER = None
+
+@app.on_event("startup")
+def _startup():
+    global ANALYZER
+    ANALYZER = get_analysis_provider()
+
 
 def search_hits(query: str, top_k: int = 3):
     q = query.lower()
@@ -101,6 +125,52 @@ def uploads(payload: dict):
     out = {"submission_id": sid, "created_at": datetime.datetime.utcnow().isoformat() + "Z"}
     log_evidence("upload", sid, payload)
     return out
+
+
+
+@app.post("/analyze-llm")
+async def analyze_llm(
+    file: UploadFile = File(...),
+    prompt: str = Form("Explain this image"),
+    submission_id: str = Form("unknown"),
+):
+    # 이미지 바이트 읽기
+    image_bytes = await file.read()
+
+    # LLaVA(ollama) 호출
+    text = ANALYZER.analyze(prompt, image_bytes)
+
+    # 기존 응답 포맷을 최대한 존중(프론트가 findings를 기대하면 유지)
+    resp = {
+        "findings": [
+            {
+                "region": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0},  # 일단 전체 영역
+                "label": "LLM Summary",
+                "confidence": 0.99,  # 임시값
+                "explanation": text,  # LLaVA가 만든 설명을 그대로 노출
+                "citations": [],
+            }
+        ],
+        "model_version": os.getenv("ANALYSIS_MODEL", "llava:7b"),
+        "prompt_snapshot": prompt,
+        "submission_id": submission_id,
+    }
+
+    # 선택: 기존 로깅과 동일하게 남기기
+    try:
+        log_evidence("analyze_llm", submission_id, resp)
+    except Exception:
+        pass
+
+    return resp
+
+
+
+# 3) 전역 핸들러 준비
+ANALYZER = None
+
+
+
 
 @app.post("/analyze")
 def analyze(payload: dict):
