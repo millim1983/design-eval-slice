@@ -27,6 +27,7 @@ from app.providers import ProviderFactory
 from app.rag import RagService
 from app.agent import build_agent, run_agent
 
+
 def init_db():
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
@@ -97,6 +98,7 @@ _EXPERT_DB_URL = os.getenv("EXPERT_GUIDE_DB_URL", "")
 _EVAL_DB_URL = os.getenv("EVAL_INTERPRET_DB_URL", "")
 rag_service = RagService(_EXPERT_DB_URL, _EVAL_DB_URL)
 agent_executor: AgentExecutor | None = None
+
 
 def read_json_no_bom(p):
     return json.loads(p.read_text(encoding="utf-8-sig"))
@@ -247,6 +249,7 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     try:
+
         raw = await provider.generate(message, "llava:7b", images=[image_b64], stream=False)
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
