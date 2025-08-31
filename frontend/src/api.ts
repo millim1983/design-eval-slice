@@ -1,12 +1,13 @@
 import type {
-  RubricDSL,
-  AnalyzeResponse,
-  ReportEvent,
-  Project,
+    RubricDSL,
+    AnalyzeResponse,
+    ReportEvent,
+    Project,
   Submission,
   Judge,
   Assignment,
-} from "./types";
+    RagResponse,
+  } from "./types";
 
 const API_BASE = (
   import.meta.env.VITE_API_URL ??
@@ -114,12 +115,16 @@ upload: (p: {
       { score },
     ),
 
-  finalScore: (submission_id: number) =>
-    j<{ submission_id: number; final_score: number | null }>(
-      "GET",
-      `/submissions/${submission_id}/final-score`,
-    ),
-};
+    finalScore: (submission_id: number) =>
+      j<{ submission_id: number; final_score: number | null }>(
+        "GET",
+        `/submissions/${submission_id}/final-score`,
+      ),
+
+    ragEval: (query: string) =>
+      j<RagResponse>("POST", "/rag-eval", { query }),
+    refreshRag: () => j<{ ok: boolean }>("POST", "/rag-index/refresh"),
+  };
 
 export default api;
 
