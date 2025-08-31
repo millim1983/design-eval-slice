@@ -20,12 +20,19 @@ def init_db():
     conn.commit()
     conn.close()
 
-def log_evidence(kind: str, submission_id: str, payload: dict, user_id: str | None = None):
+def log_evidence(
+    kind: str,
+    submission_id: str,
+    payload: dict,
+    user_id: str | None = None,
+    raw_output: str | None = None,
+    image: str | None = None,
+):
     conn = sqlite3.connect(DB_PATH)
     now = datetime.datetime.utcnow().isoformat() + "Z"
     conn.execute(
-        "INSERT INTO evidence_ledger(kind, submission_id, user_id, at, payload_json) VALUES(?,?,?,?,?)",
-        (kind, submission_id, user_id, now, json.dumps(payload, ensure_ascii=False))
+        "INSERT INTO evidence_ledger(kind, submission_id, user_id, at, payload_json, raw_output, image) VALUES(?,?,?,?,?,?,?)",
+        (kind, submission_id, user_id, now, json.dumps(payload, ensure_ascii=False), raw_output, image)
     )
     conn.commit()
     conn.close()
@@ -99,7 +106,8 @@ def search_hits(query: str, top_k: int = 3):
 def uploads(payload: dict):
     sid = f"sub_{int(time.time()*1000)}"
     out = {"submission_id": sid, "created_at": datetime.datetime.utcnow().isoformat() + "Z"}
-    log_evidence("upload", sid, payload)
+    image = payload.get("asset_url")
+    log_evidence("upload", sid, payload, image=image)
     return out
 
 @app.post("/analyze")
@@ -118,7 +126,8 @@ def analyze(payload: dict):
         "model_version": "lmm_stub_v0",
         "prompt_snapshot": "Analyze visual hierarchy, contrast, typography…"
     }
-    log_evidence("analyze", sid, resp)
+    raw_output = json.dumps(resp, ensure_ascii=False)
+    log_evidence("analyze", sid, resp, raw_output=raw_output)
     return resp
 
 @app.post("/chat")
@@ -155,10 +164,48 @@ def evaluate(record: dict):
 @app.get("/report/{submission_id}")
 def report(submission_id: str):
     conn = sqlite3.connect(DB_PATH)
-    cur = conn.execute("SELECT kind, at, payload_json FROM evidence_ledger WHERE submission_id=? ORDER BY id ASC", (submission_id,))
-    items = [{"kind": k, "at": at, "payload": json.loads(p)} for (k, at, p) in cur.fetchall()]
+    cur = conn.execute(
+        "SELECT kind, at, payload_json, raw_output, image FROM evidence_ledger WHERE submission_id=? ORDER BY id ASC",
+        (submission_id,),
+    )
+    items = [
+        {
+            "kind": k,
+            "at": at,
+            "payload": json.loads(p),
+            "raw_output": r,
+            "image": img,
+        }
+        for (k, at, p, r, img) in cur.fetchall()
+    ]
     conn.close()
     return {"submission_id": submission_id, "events": items}
+
+
+@app.get("/dataset/export")
+def dataset_export():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    dataset = []
+    cur.execute("SELECT submission_id, image FROM evidence_ledger WHERE kind='upload'")
+    uploads = cur.fetchall()
+    for sid, image in uploads:
+        cur.execute(
+            "SELECT payload_json FROM evidence_ledger WHERE submission_id=? AND kind='analyze' ORDER BY id DESC LIMIT 1",
+            (sid,),
+        )
+        row = cur.fetchone()
+        findings = json.loads(row[0]).get("findings") if row else None
+        cur.execute(
+            "SELECT payload_json FROM evidence_ledger WHERE submission_id=? AND kind='evaluate' ORDER BY id DESC LIMIT 1",
+            (sid,),
+        )
+        row = cur.fetchone()
+        corrections = json.loads(row[0]) if row else None
+        if image and findings and corrections:
+            dataset.append({"image": image, "findings": findings, "corrections": corrections})
+    conn.close()
+    return {"data": dataset}
 
 @app.get("/", include_in_schema=False)
 def root():
