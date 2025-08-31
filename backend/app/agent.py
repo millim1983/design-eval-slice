@@ -8,6 +8,7 @@ from langchain_community.llms import Ollama
 from langchain.output_parsers import PydanticOutputParser
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 from pydantic import ValidationError
+from app.observability import span
 
 from app.rag import RagService
 from app.schemas import AgentAnswer
@@ -67,6 +68,7 @@ FORMAT_INSTRUCTIONS = parser.get_format_instructions()
 )
 def run_agent(agent: AgentExecutor, question: str) -> AgentAnswer:
     """Execute ``agent`` with structured output parsing and retries."""
-    prompt = f"{question}\n{FORMAT_INSTRUCTIONS}"
-    output = agent.run(prompt)
-    return parser.parse(output)
+    with span("agent.run"):
+        prompt = f"{question}\n{FORMAT_INSTRUCTIONS}"
+        output = agent.run(prompt)
+        return parser.parse(output)

@@ -40,6 +40,7 @@ from app.security import mask_pii, detect_prompt_injection, filter_output
 from pydantic import ValidationError
 from langchain.output_parsers import PydanticOutputParser
 from app.core.config import AppConfig, load_config
+from app.observability import init_observability
 
 
 def init_db():
@@ -122,6 +123,7 @@ async def lifespan(app: FastAPI):
     init_db()
     global CHUNKS, RUBRIC, CONFIG, rag_service, agent_executor
     CONFIG = load_config()
+    init_observability(CONFIG.observability)
     CHUNKS = load_guideline_chunks()
     RUBRIC = read_json_no_bom(RUBRIC_FILE)
     rag_service = RagService(
