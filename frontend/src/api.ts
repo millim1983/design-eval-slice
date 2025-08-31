@@ -8,12 +8,14 @@ import type {
   Assignment,
 } from "./types";
 
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+
 const j = async <T>(
   method: string,
   path: string,
   body?: unknown,
 ): Promise<T> => {
-  const res = await fetch(path, {
+  const res = await fetch(API_BASE + path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -37,7 +39,7 @@ upload: (p: {
       form.append("title", p.title);
       form.append("author_id", p.author_id);
       form.append("file", p.file);
-      return fetch("/uploads", { method: "POST", body: form }).then((r) => {
+      return fetch(API_BASE + "/uploads", { method: "POST", body: form }).then((r) => {
         if (!r.ok) throw new Error("upload failed");
         return r.json();
       });
