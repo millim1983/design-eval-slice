@@ -14,6 +14,13 @@ from .models import (
     EvaluateResponse,
     EvaluationScore,
     ModelSuggestion,
+    VisionRequest,
+    VisionResponse,
+    RagEvalRequest,
+    RagEvalResponse,
+    RagCitation,
+    ModerateRequest,
+    ModerateResponse,
 )
 
 
@@ -49,6 +56,13 @@ __all__ = [
     "EvaluateResponse",
     "EvaluationScore",
     "ModelSuggestion",
+    "VisionRequest",
+    "VisionResponse",
+    "RagEvalRequest",
+    "RagEvalResponse",
+    "RagCitation",
+    "ModerateRequest",
+    "ModerateResponse",
     "LLMChatResponse",
     "StructuredError",
     "AgentAnswer",

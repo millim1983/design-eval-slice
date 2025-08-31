@@ -4,6 +4,7 @@ import api from "../api";
 export default function RagEval(){
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
+  const [citations, setCitations] = useState<{doc_id:string;text:string}[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -11,9 +12,11 @@ export default function RagEval(){
     setBusy(true);
     setError(null);
     setAnswer("");
+    setCitations([]);
     try {
       const res = await api.ragEval(query);
       setAnswer(res.answer);
+      setCitations(res.citations);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -45,6 +48,13 @@ export default function RagEval(){
       <input type="text" placeholder="질문" value={query} onChange={e=>setQuery(e.target.value)} />
       {error && <div className="error">Error: {error}</div>}
       {answer && <div className="row">답변: <span>{answer}</span></div>}
+      {citations.length ? (
+        <ul>
+          {citations.map((c,i)=>(
+            <li key={i} className="mono">{c.doc_id}: {c.text}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

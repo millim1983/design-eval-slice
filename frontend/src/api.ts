@@ -7,6 +7,8 @@ import type {
   Judge,
   Assignment,
     RagResponse,
+    VisionResponse,
+    ModerateResponse,
   } from "./types";
 
 const API_BASE = (
@@ -66,6 +68,22 @@ upload: (p: {
   analyze: (submission_id: string) =>
     j<AnalyzeResponse>("POST", "/analyze", { submission_id }),
 
+  analyzeVision: (file: File, prompt?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (prompt) form.append("prompt", prompt);
+    return fetch(API_BASE + "/analyze-vision", {
+      method: "POST",
+      body: form,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const msg = await r.text();
+        throw new Error(msg || "analyze failed");
+      }
+      return r.json() as Promise<VisionResponse>;
+    });
+  },
+
   chat: (submission_id: string, message: string) =>
     j<{
       answer: string;
@@ -118,12 +136,15 @@ upload: (p: {
     finalScore: (submission_id: number) =>
       j<{ submission_id: number; final_score: number | null }>(
         "GET",
-        `/submissions/${submission_id}/final-score`,
+      `/submissions/${submission_id}/final-score`,
       ),
 
     ragEval: (query: string) =>
       j<RagResponse>("POST", "/rag-eval", { query }),
     refreshRag: () => j<{ ok: boolean }>("POST", "/rag-index/refresh"),
+
+    moderate: (input: string, output?: string) =>
+      j<ModerateResponse>("POST", "/moderate", { input, output }),
   };
 
 export default api;

@@ -16,7 +16,17 @@ export type Assignment = { assignment_id:number; submission_id:number; judge_id:
 
 export type RagResponse = {
   answer: string;
-  sources: Array<{ doc_id: string; text: string }>;
+  citations: Array<{ doc_id: string; text: string }>;
+};
+
+export type VisionResponse = {
+  answer: string;
+  model_version: string;
+};
+
+export type ModerateResponse = {
+  compliant: boolean;
+  reasons: string[];
 };
 
 export type EvaluateRequest = {

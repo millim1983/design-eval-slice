@@ -80,3 +80,42 @@ class EvaluateRequest(BaseModel):
 
 class EvaluateResponse(BaseModel):
     ok: bool
+
+
+class VisionRequest(BaseModel):
+    """Request payload for /analyze-vision."""
+
+    prompt: Optional[str] = None
+
+
+class VisionResponse(BaseModel):
+    """Response payload from /analyze-vision."""
+
+    answer: str
+    model_version: str
+
+
+class RagCitation(BaseModel):
+    """Citation item returned from RAG evaluation."""
+
+    doc_id: str
+    text: str
+
+
+class RagEvalRequest(BaseModel):
+    query: str
+
+
+class RagEvalResponse(BaseModel):
+    answer: str
+    citations: List[RagCitation] = []
+
+
+class ModerateRequest(BaseModel):
+    input: str
+    output: Optional[str] = None
+
+
+class ModerateResponse(BaseModel):
+    compliant: bool
+    reasons: List[str] = []
