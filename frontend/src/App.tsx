@@ -11,6 +11,7 @@ export default function App(){
   const [findings, setFindings] = useState<AnalyzeResponse|undefined>();
   const [events, setEvents] = useState<ReportEvent[]>([]);
   const [busy, setBusy] = useState(false);
+  const [orgLog, setOrgLog] = useState<string[]>([]);
 
   const start = async () => {
     setBusy(true);
@@ -25,6 +26,22 @@ export default function App(){
 
   const loadReport = async () => { if(!sid) return; const rep = await api.report(sid); setEvents(rep.events ?? []); };
   useEffect(()=>{ if(sid) loadReport(); },[sid]);
+
+  const organizerDemo = async () => {
+    const log:string[] = [];
+    const p = await api.createProject("Demo Project");
+    log.push(`project ${p.project_id}`);
+    const j = await api.createJudge("Judge One");
+    log.push(`judge ${j.judge_id}`);
+    const s = await api.createSubmission(p.project_id, "Demo Submission");
+    log.push(`submission ${s.submission_id}`);
+    const a = await api.assignJudge(s.submission_id, j.judge_id);
+    log.push(`assignment ${a.assignment_id}`);
+    await api.recordScore(a.assignment_id, 4.2);
+    const fs = await api.finalScore(s.submission_id);
+    log.push(`final ${fs.final_score}`);
+    setOrgLog(log);
+  };
 
   return (
     <div className="wrap">
@@ -50,6 +67,17 @@ export default function App(){
           </div>
         )) : <div className="muted">아직 이벤트가 없습니다.</div>}
       </div>) : null}
+      <div className="card">
+        <div className="row" style={{justifyContent:"space-between"}}>
+          <b>Organizer Demo</b>
+          <button className="btn" onClick={organizerDemo}>Run</button>
+        </div>
+        {orgLog.length ? (
+          <ul>
+            {orgLog.map((l,i)=>(<li key={i} className="mono">{l}</li>))}
+          </ul>
+        ) : <div className="muted">No actions yet.</div>}
+      </div>
     </div>
   );
 }

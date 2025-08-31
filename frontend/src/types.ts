@@ -9,3 +9,8 @@
 export type AnalyzeFinding = { region:{x:number;y:number;w:number;h:number}; label:string; confidence:number; explanation:string; citations?:string[]; };
 export type AnalyzeResponse = { findings: AnalyzeFinding[]; model_version:string; prompt_snapshot:string; };
 export type ReportEvent = { kind: string; at: string; payload: any };
+
+export type Project = { id:number; name:string; created_at:string };
+export type Submission = { id:number; project_id:number; title:string; created_at:string };
+export type Judge = { id:number; name:string; created_at:string };
+export type Assignment = { id:number; submission_id:number; judge_id:number; score:number|null; created_at:string };
