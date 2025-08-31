@@ -23,9 +23,6 @@ from app.core.paths import (
 
 from app.ollama_client import generate
 
-app = FastAPI(title="Design Evaluation Vertical Slice", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
 def init_db():
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
@@ -100,8 +97,7 @@ async def lifespan(app: FastAPI):
 # ⚠️ app 생성 시 lifespan 파라미터로 등록
 app = FastAPI(title="Design Evaluation Vertical Slice", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-
+ 
 
 def search_hits(query: str, top_k: int = 3):
     q = query.lower()
