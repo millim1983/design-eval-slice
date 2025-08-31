@@ -20,7 +20,7 @@ export default function JudgeReview({ submissionId, initialFindings, onSubmitted
   const submit = async () => {
     setBusy(true);
     try {
-      await api.review({ submission_id: submissionId, findings: items, note });
+      await api.evaluate({ submission_id: submissionId, findings: items, note });
       alert("Review submitted");
       onSubmitted?.();
     } catch (e) {
