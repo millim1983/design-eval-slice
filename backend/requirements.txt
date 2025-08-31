@@ -1,3 +1,8 @@
-﻿fastapi
+fastapi
 uvicorn[standard]
 requests>=2.32.3
+torch
+torchvision
+transformers
+llava
+pillow

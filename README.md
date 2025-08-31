@@ -1,4 +1,4 @@
-﻿# design-eval-slice (Vertical Slice)
+# design-eval-slice (Vertical Slice)
 - FastAPI 백엔드: LMM 해석 스텁 + RAG(키워드 검색) + Rubric 폼 데이터
 - 실행:
   1) cd backend
@@ -7,3 +7,4 @@
   4) uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
   5) http://localhost:8000/docs
 - Docker: backend/에서 `docker compose up --build`
+- `llava_local` 제공자 사용 시에는 CUDA를 지원하는 GPU(권장 VRAM 8GB 이상)가 필요합니다.
