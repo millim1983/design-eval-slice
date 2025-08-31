@@ -38,19 +38,23 @@ export default function App(){
     }
     let submissionId = "";
     try {
-      const u = await api.upload({ title: "Demo", author_id: "u_demo", file: imageFile });
+      const u = await api.upload({
+        title: "Demo",
+        author_id: "u_demo",
+        file: imageFile,
+      });
       submissionId = u.submission_id;
       setSid(submissionId);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
       return;
     }
     try {
       const c = await api.chat(submissionId, question);
       setAnswer(c.answer);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }

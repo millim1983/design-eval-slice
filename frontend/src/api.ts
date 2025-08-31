@@ -39,10 +39,15 @@ upload: (p: {
       form.append("title", p.title);
       form.append("author_id", p.author_id);
       form.append("file", p.file);
-      return fetch(API_BASE + "/uploads", { method: "POST", body: form }).then((r) => {
-        if (!r.ok) throw new Error("upload failed");
-        return r.json();
-      });
+      return fetch(API_BASE + "/uploads", { method: "POST", body: form }).then(
+        async (r) => {
+          if (!r.ok) {
+            const msg = await r.text();
+            throw new Error(msg || "upload failed");
+          }
+          return r.json();
+        },
+      );
     }
     return j<{ submission_id: string; created_at: string }>("POST", "/uploads", p);
   },
