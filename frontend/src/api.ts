@@ -8,25 +8,32 @@ import type {
   Assignment,
 } from "./types";
 
-const API_BASE =
+const API_BASE = (
   import.meta.env.VITE_API_URL ??
   import.meta.env.VITE_API_BASE ??
-  "http://localhost:8000";
+  "http://localhost:8000"
+).replace(/\/+$/, "");
 
 const j = async <T>(
   method: string,
   path: string,
   body?: unknown,
 ): Promise<T> => {
-  const res = await fetch(API_BASE + path, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    throw new Error(await res.text());
+  try {
+    const res = await fetch(API_BASE + path, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    return res.json() as Promise<T>;
+  } catch (err) {
+    throw new Error(
+      `API request failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
-  return res.json() as Promise<T>;
 };
 
 export const api = {
