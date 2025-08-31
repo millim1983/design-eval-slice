@@ -1,8 +1,10 @@
 import os
+import logging
 from fastapi import HTTPException
 import httpx
 from typing import Any, Dict
 
+logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 async def generate(prompt: str, model: str, **kwargs: Any) -> Dict[str, Any]:
@@ -27,7 +29,11 @@ async def generate(prompt: str, model: str, **kwargs: Any) -> Dict[str, Any]:
             response = await client.post(url, json=payload)
             response.raise_for_status()
     except httpx.ConnectError as exc:
-        raise HTTPException(status_code=503, detail="Ollama server is unreachable") from exc
+        logger.error("Ollama server unreachable at %s", url)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama server is unreachable at {url}",
+        ) from exc
     except httpx.ReadTimeout as exc:
         raise HTTPException(status_code=504, detail="Ollama server timed out") from exc
     except httpx.HTTPError as exc:

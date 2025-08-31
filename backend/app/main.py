@@ -187,8 +187,8 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     image_b64 = row[0]
     try:
         raw = await generate(message, "llava:7b", images=[image_b64], stream=False)
-    except HTTPException:
-        raise
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     answer = raw.get("response", "").strip()
     resp = ChatResponse(
         answer=answer,
