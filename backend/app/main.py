@@ -35,6 +35,13 @@ def init_db():
     ]:
         sql = (SCHEMAS_DIR / name).read_text(encoding="utf-8")
         conn.executescript(sql)
+    # Apply lightweight migrations if the table already exists without new columns
+    cur = conn.execute("PRAGMA table_info(evidence_ledger)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "raw_output" not in cols:
+        conn.execute("ALTER TABLE evidence_ledger ADD COLUMN raw_output TEXT")
+    if "image" not in cols:
+        conn.execute("ALTER TABLE evidence_ledger ADD COLUMN image TEXT")
     conn.commit()
     conn.close()
 
