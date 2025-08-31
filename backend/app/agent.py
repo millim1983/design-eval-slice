@@ -1,7 +1,6 @@
 from __future__ import annotations
 """LangChain agent utilities for question routing and retries."""
 
-import os
 from typing import Callable
 
 from langchain.agents import AgentExecutor, AgentType, Tool, initialize_agent
@@ -12,6 +11,7 @@ from pydantic import ValidationError
 
 from app.rag import RagService
 from app.schemas import AgentAnswer
+from app.core.config import ModelsConfig, load_config
 
 
 def _rag_tool_factory(rag: RagService) -> Callable[[str], str]:
@@ -24,9 +24,20 @@ def _rag_tool_factory(rag: RagService) -> Callable[[str], str]:
     return _rag_query
 
 
-def build_agent(rag: RagService) -> AgentExecutor:
-    """Return an agent with RAG and free-form chat tools."""
-    llm = Ollama(base_url=os.getenv("OLLAMA_URL", "http://localhost:11434"), model="llama2")
+def build_agent(rag: RagService, models: ModelsConfig | None = None) -> AgentExecutor:
+    """Return an agent with RAG and free-form chat tools.
+
+    Parameters
+    ----------
+    rag:
+        Service used for retrieval-augmented generation.
+    models:
+        Model configuration loaded from ``models.yaml``. If ``None`` the
+        configuration is loaded on demand.
+    """
+    if models is None:
+        models = load_config().models
+    llm = Ollama(base_url=models.base_url, model=models.model)
     tools = [
         Tool(
             name="rag_search",

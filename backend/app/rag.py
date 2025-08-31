@@ -6,20 +6,20 @@ texts from external databases and builds vector indexes for retrieval.
 """
 
 from typing import Any, List
-import os
+
 import httpx
 from llama_index.core import Document, VectorStoreIndex
 
 
-async def fetch_documents(url: str) -> List[Document]:
+async def fetch_documents(url: str, timeout: float) -> List[Document]:
     """Fetch documents from an external REST endpoint.
 
-    The endpoint is expected to return JSON list of objects with
-    ``id`` and ``text`` fields. This structure keeps the function generic so
-    different databases can expose a compatible API.
+    The endpoint is expected to return JSON list of objects with ``id`` and
+    ``text`` fields. This structure keeps the function generic so different
+    databases can expose a compatible API.
     """
     async with httpx.AsyncClient() as client:
-        resp = await client.get(url, timeout=30.0)
+        resp = await client.get(url, timeout=timeout)
         resp.raise_for_status()
         items: List[dict[str, Any]] = resp.json()
     docs: List[Document] = []
@@ -33,9 +33,10 @@ async def fetch_documents(url: str) -> List[Document]:
 class RagService:
     """Manage LlamaIndex vector indexes for RAG queries."""
 
-    def __init__(self, expert_url: str, evaluation_url: str) -> None:
+    def __init__(self, expert_url: str, evaluation_url: str, timeout: float = 30.0) -> None:
         self.expert_url = expert_url
         self.evaluation_url = evaluation_url
+        self.timeout = timeout
         self._expert_index: VectorStoreIndex | None = None
         self._evaluation_index: VectorStoreIndex | None = None
 
@@ -45,7 +46,7 @@ class RagService:
         self._evaluation_index = await self._build_index(self.evaluation_url)
 
     async def _build_index(self, url: str) -> VectorStoreIndex:
-        docs = await fetch_documents(url)
+        docs = await fetch_documents(url, self.timeout)
         return VectorStoreIndex.from_documents(docs)
 
     def query(self, question: str) -> dict[str, Any]:

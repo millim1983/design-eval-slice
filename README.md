@@ -13,3 +13,28 @@
   8) http://localhost:8000/docs
   9) `frontend/.env.example`을 `.env`로 복사하고 필요한 경우 `VITE_API_URL`을 수정
 - Docker: backend/에서 `docker compose up --build`
+
+## Configuration
+
+Backend configuration is loaded from YAML files in `backend/config/` when the
+application starts. Default sample files are provided:
+
+- `models.yaml`
+- `lora.yaml`
+- `prompts.yaml`
+- `policy.yaml`
+- `rag.yaml`
+
+Each file can be overridden by pointing an environment variable to an alternate
+path:
+
+```
+MODELS_CONFIG=/path/to/models.yaml
+LORA_CONFIG=/path/to/lora.yaml
+PROMPTS_CONFIG=/path/to/prompts.yaml
+POLICY_CONFIG=/path/to/policy.yaml
+RAG_CONFIG=/path/to/rag.yaml
+```
+
+These files allow customizing model endpoints, LoRA adapters, prompts, security
+policies, and RAG document sources without changing code.
