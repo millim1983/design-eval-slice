@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import api from "./api";
 import { RubricDSL, AnalyzeResponse, ReportEvent } from "./types";
 import Findings from "./components/Findings";
@@ -15,7 +15,7 @@ export default function App(){
     setBusy(true);
     const u = await api.upload({ title:"Demo", author_id:"u_demo", asset_url:"" });
     setSid(u.submission_id);
-    const a = await api.analyze(u.submission_id);
+    const a = await api.analyze({ submission_id: u.submission_id });
     setFindings(a);
     const r = await api.rubric();
     setRubric(r);
