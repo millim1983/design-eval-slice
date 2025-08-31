@@ -10,6 +10,7 @@ export const api = {
   search: (q:string) => j("POST","/search-guideline",{award_id:"aw_2025_kda", query:q}),
   rubric: () => j("GET","/rubrics/aw_2025_kda/1.0.0"),
   evaluate: (rec:any) => j("POST","/evaluate",rec),
+  review: (p:{submission_id:string; findings:any; note?:string}) => j("POST","/review",p),
   report: (sid:string) => j("GET",`/report/${sid}`)
 };
 export default api;
