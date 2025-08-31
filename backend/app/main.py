@@ -86,7 +86,7 @@ def get_analysis_provider():
         return SimpleNamespace(analyze=analyze)
     elif p == "llava_local":
         from app.providers.llava_local import query_llm
-        return SimpleNamespace(analyze=lambda prompt, img: query_llm(prompt, img))
+        return SimpleNamespace(analyze=query_llm)
     else:
         from app.providers.vision_stub import analyze
         return SimpleNamespace(analyze=analyze)
