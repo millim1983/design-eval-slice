@@ -222,6 +222,16 @@ def evaluate(record: dict):
     log_evidence("evaluate", sid, record)
     return {"ok": True}
 
+
+@app.post("/feedback")
+def feedback(record: dict):
+    """Receive manual feedback on a submission and store it in the evidence ledger."""
+    sid = record.get("submission_id", "unknown")
+    uid = record.get("user_id")
+    payload = {"text": record.get("text"), "rating": record.get("rating")}
+    log_evidence("feedback", sid, payload, uid)
+    return {"ok": True}
+
 @app.get("/report/{submission_id}")
 def report(submission_id: str):
     conn = sqlite3.connect(DB_PATH)

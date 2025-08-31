@@ -3,6 +3,7 @@ import api from "./api";
 import { RubricDSL, AnalyzeResponse, ReportEvent } from "./types";
 import Findings from "./components/Findings";
 import RubricForm from "./components/RubricForm";
+import FeedbackForm from "./components/FeedbackForm";
 
 export default function App(){
   const [sid, setSid] = useState<string>("");
@@ -37,6 +38,7 @@ export default function App(){
       </div>
       {findings ? (<div className="card"><b>2) 자동 분석 결과</b><Findings items={findings.findings} /></div>) : null}
       {rubric && sid ? (<RubricForm rubric={rubric} submissionId={sid} onSubmitted={loadReport} />) : null}
+      {sid ? (<FeedbackForm submissionId={sid} onSubmitted={loadReport} />) : null}
       {sid ? (<div className="card">
         <div className="row" style={{justifyContent:"space-between"}}><b>3) Evidence Report</b><button className="btn" onClick={loadReport}>새로고침</button></div>
         <div className="muted">upload/analyze/evaluate 로그가 순서대로 보입니다.</div>

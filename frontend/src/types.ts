@@ -9,3 +9,4 @@
 export type AnalyzeFinding = { region:{x:number;y:number;w:number;h:number}; label:string; confidence:number; explanation:string; citations?:string[]; };
 export type AnalyzeResponse = { findings: AnalyzeFinding[]; model_version:string; prompt_snapshot:string; };
 export type ReportEvent = { kind: string; at: string; payload: any };
+export type FeedbackPayload = { submission_id: string; user_id: string; rating: number; text: string };
