@@ -13,3 +13,23 @@ export type Project = { project_id:number; name:string; created_at:string };
 export type Submission = { submission_id:number; project_id?:number; title:string; created_at:string };
 export type Judge = { judge_id:number; name:string; created_at:string };
 export type Assignment = { assignment_id:number; submission_id:number; judge_id:number; score?:number|null; created_at:string };
+
+export type EvaluateRequest = {
+  submission_id: string;
+  judge_id: string;
+  rubric_version: string;
+  scores: Array<{
+    criteria_id: string;
+    score: number;
+    reason?: string;
+    citation_ids?: string[];
+    checks?: Record<string, any>;
+  }>;
+  model_suggestions?: Array<{
+    criteria_id?: string;
+    suggested_score?: number;
+    explanation?: string;
+    citation_ids?: string[];
+  }>;
+  submitted_at?: string;
+};
