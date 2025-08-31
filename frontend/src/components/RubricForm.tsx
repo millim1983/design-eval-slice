@@ -1,5 +1,6 @@
-﻿import { useMemo, useState } from "react";
-import { RubricDSL } from "../types";
+import { useMemo, useState } from "react";
+import api from "../api";
+import { RubricDSL, EvaluateRequest } from "../types";
 type Props = { rubric: RubricDSL; submissionId: string; onSubmitted: () => void; };
 export default function RubricForm({ rubric, submissionId, onSubmitted }: Props) {
   const init = useMemo(()=>Object.fromEntries(rubric.criteria.map(c=>[c.id, (c.scale.min ?? 1)])),[rubric]);
@@ -7,11 +8,22 @@ export default function RubricForm({ rubric, submissionId, onSubmitted }: Props)
   const [note, setNote] = useState<string>("");
   const setScore = (id:string, v:number)=> setScores(s=>({...s,[id]:v}));
   const submit = async () => {
-    const rec = { submission_id: submissionId, judge_id: "u_demo_judge", rubric_version: rubric.version,
-      scores: rubric.criteria.map(c=>({ criteria_id:c.id, score:Number(scores[c.id]||0), reason: note||undefined })) };
-    const r = await fetch((import.meta as any).env.VITE_API_BASE || "http://localhost:8000" + "/evaluate",
-      { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(rec) });
-    if(!r.ok){ alert("Evaluate failed"); return; }
+    const rec: EvaluateRequest = {
+      submission_id: submissionId,
+      judge_id: "u_demo_judge",
+      rubric_version: rubric.version,
+      scores: rubric.criteria.map(c => ({
+        criteria_id: c.id,
+        score: Number(scores[c.id] || 0),
+        reason: note || undefined,
+      })),
+    };
+    try {
+      await api.evaluate(rec);
+    } catch {
+      alert("Evaluate failed");
+      return;
+    }
     onSubmitted();
   };
   return (<div className="card">

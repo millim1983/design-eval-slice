@@ -1,8 +1,21 @@
-﻿from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import json, re, time, sqlite3, datetime
 from fastapi.responses import RedirectResponse
+
+from app.schemas import (
+    UploadRequest,
+    UploadResponse,
+    AnalyzeRequest,
+    AnalyzeResponse,
+    ChatRequest,
+    ChatResponse,
+    EvaluateRequest,
+    EvaluateResponse,
+    AnalyzeFinding,
+    Region,
+)
 
 from app.core.paths import (
     SCHEMAS_DIR, SEEDS_DIR, DB_PATH,
@@ -109,46 +122,64 @@ def search_hits(query: str, top_k: int = 3):
         })
     return hits
 
-@app.post("/uploads")
-def uploads(payload: dict):
-    sid = f"sub_{int(time.time()*1000)}"
-    out = {"submission_id": sid, "created_at": datetime.datetime.utcnow().isoformat() + "Z"}
-    image = payload.get("asset_url")
-    log_evidence("upload", sid, payload, image=image)
+@app.post("/uploads", response_model=UploadResponse)
+def uploads(payload: UploadRequest) -> UploadResponse:
+    sid = f"sub_{int(time.time() * 1000)}"
+    out = UploadResponse(
+        submission_id=sid,
+        created_at=datetime.datetime.utcnow(),
+    )
+    log_evidence(
+        "upload",
+        sid,
+        payload.model_dump(),
+        image=payload.asset_url,
+    )
     return out
 
-@app.post("/analyze")
-def analyze(payload: dict):
-    sid = payload.get("submission_id", "unknown")
+
+@app.post("/analyze", response_model=AnalyzeResponse)
+def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
+    sid = payload.submission_id
     hits = search_hits("contrast") or search_hits("대비")
-    findings = [{
-        "region": {"x": 0.18, "y": 0.22, "w": 0.42, "h": 0.28},
-        "label": "Low Contrast",
-        "confidence": 0.82,
-        "explanation": "Text/background contrast may be below recommended ratio.",
-        "citations": [h["citation_id"] for h in hits]
-    }]
-    resp = {
-        "findings": findings,
-        "model_version": "lmm_stub_v0",
-        "prompt_snapshot": "Analyze visual hierarchy, contrast, typography…"
-    }
-    raw_output = json.dumps(resp, ensure_ascii=False)
-    log_evidence("analyze", sid, resp, raw_output=raw_output)
+    findings = [
+        AnalyzeFinding(
+            region=Region(x=0.18, y=0.22, w=0.42, h=0.28),
+            label="Low Contrast",
+            confidence=0.82,
+            explanation="Text/background contrast may be below recommended ratio.",
+            citations=[h["citation_id"] for h in hits],
+        )
+    ]
+    resp = AnalyzeResponse(
+        findings=findings,
+        model_version="lmm_stub_v0",
+        prompt_snapshot="Analyze visual hierarchy, contrast, typography…",
+    )
+    raw_output = resp.model_dump_json(ensure_ascii=False)
+    log_evidence("analyze", sid, resp.model_dump(), raw_output=raw_output)
     return resp
 
-@app.post("/chat")
-def chat(payload: dict):
-    sid = payload.get("submission_id", "unknown")
-    message = payload.get("message", "")
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(payload: ChatRequest) -> ChatResponse:
+    sid = payload.submission_id
+    message = payload.message
     needs_evidence = any(k in message.lower() for k in ["근거", "why", "guideline", "§", "contrast", "wcag"])
     citations = []
     if needs_evidence:
         citations = [h["citation_id"] for h in search_hits("contrast")]
-    answer = "Contrast looks borderline. See guideline citations." if citations else \
-             "General suggestion: improve visual hierarchy with size/weight/position."
-    resp = {"answer": answer, "citations": citations, "model_version": "lmm_stub_v0", "prompt_snapshot": "Conversational QA prompt…"}
-    log_evidence("chat", sid, {"message": message, **resp})
+    answer = (
+        "Contrast looks borderline. See guideline citations." if citations else
+        "General suggestion: improve visual hierarchy with size/weight/position."
+    )
+    resp = ChatResponse(
+        answer=answer,
+        citations=citations,
+        model_version="lmm_stub_v0",
+        prompt_snapshot="Conversational QA prompt…",
+    )
+    log_evidence("chat", sid, {"message": message, **resp.model_dump()})
     return resp
 
 @app.post("/search-guideline")
@@ -293,11 +324,11 @@ def get_rubric(award_id: str, version: str):
         return RUBRIC
     raise HTTPException(status_code=404, detail="Rubric not found")
 
-@app.post("/evaluate")
-def evaluate(record: dict):
-    sid = record.get("submission_id", "unknown")
-    log_evidence("evaluate", sid, record)
-    return {"ok": True}
+@app.post("/evaluate", response_model=EvaluateResponse)
+def evaluate(record: EvaluateRequest) -> EvaluateResponse:
+    sid = record.submission_id
+    log_evidence("evaluate", sid, record.model_dump())
+    return EvaluateResponse(ok=True)
 
 @app.get("/report/{submission_id}")
 def report(submission_id: str):
