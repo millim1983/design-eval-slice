@@ -7,25 +7,50 @@ export default function App(){
   const [events, setEvents] = useState<ReportEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [orgLog, setOrgLog] = useState<string[]>([]);
-  const [imageFile, setImageFile] = useState<File|null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) {
+      setImageFile(null);
+      return;
+    }
+    if (!["image/jpeg", "image/png"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setError("Please select a JPEG or PNG image under 2MB.");
+      e.target.value = "";
+      setImageFile(null);
+      return;
+    }
+    setError(null);
+    setImageFile(file);
+  };
 
   const start = async () => {
     setBusy(true);
-    setError("");
+    setError(null);
     setAnswer("");
-    if(!imageFile) { setBusy(false); return; }
+    if (!imageFile) {
+      setBusy(false);
+      return;
+    }
+    let submissionId = "";
     try {
-      const u = await api.upload({ title:"Demo", author_id:"u_demo", file: imageFile });
-      setSid(u.submission_id);
-      const c = await api.chat(u.submission_id, question);
+      const u = await api.upload({ title: "Demo", author_id: "u_demo", file: imageFile });
+      submissionId = u.submission_id;
+      setSid(submissionId);
+    } catch (err: any) {
+      setError(err.message);
+      setBusy(false);
+      return;
+    }
+    try {
+      const c = await api.chat(submissionId, question);
       setAnswer(c.answer);
-    } catch(err:any) {
-      let msg = err.message || String(err);
-      try { msg = JSON.parse(msg).detail ?? msg; } catch{}
-      setError(msg);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setBusy(false);
     }
@@ -58,10 +83,10 @@ export default function App(){
           <div><b>이미지 질문하기</b><div className="muted">이미지를 업로드하고 프롬프트로 질의합니다.</div></div>
           <button className="btn" onClick={start} disabled={busy || !imageFile}>Ask</button>
         </div>
-        <input type="file" accept="image/*" onChange={e=>setImageFile(e.target.files?.[0]??null)} />
+        <input type="file" accept="image/*" onChange={onFileChange} />
         <input type="text" placeholder="프롬프트" value={question} onChange={e=>setQuestion(e.target.value)} />
+        {error && <div className="error">Error: {error}</div>}
         {answer ? <div className="row">답변: <span>{answer}</span></div> : null}
-        {error ? <div className="row" style={{color:"red"}}>Error: <span>{error}</span></div> : null}
       </div>
       {sid ? <div className="card"><div className="row">submission_id: <span className="mono pill">{sid}</span></div></div> : null}
       {sid ? (<div className="card">
