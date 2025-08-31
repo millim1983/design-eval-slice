@@ -122,7 +122,10 @@ def analyze(payload: dict):
         "must contain region {x,y,w,h} (0-1 float), label, confidence (0-1), "
         "explanation and citations (array)."
     )
-    raw = generate(prompt, image_bytes)
+    try:
+        raw = generate(prompt, image_bytes)
+    except RuntimeError:
+        raw = ""
     try:
         findings = json.loads(raw)
     except json.JSONDecodeError:

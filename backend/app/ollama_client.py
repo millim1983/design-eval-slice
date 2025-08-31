@@ -17,10 +17,13 @@ def generate(prompt: str, image: Optional[bytes] = None) -> str:
     payload: dict[str, object] = {"model": OLLAMA_MODEL, "prompt": prompt}
     if image is not None:
         payload["images"] = [base64.b64encode(image).decode("utf-8")]
-    resp = requests.post(
-        f"{OLLAMA_URL}/api/generate", json=payload, stream=True, timeout=120
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/generate", json=payload, stream=True, timeout=120
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Ollama request failed: {exc}") from exc
     text = ""
     for line in resp.iter_lines():
         if not line:
