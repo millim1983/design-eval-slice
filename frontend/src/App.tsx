@@ -11,6 +11,11 @@ export default function App(){
   const [events, setEvents] = useState<ReportEvent[]>([]);
   const [busy, setBusy] = useState(false);
 
+  const [designFile, setDesignFile] = useState<File|undefined>();
+  const [llmResp, setLlmResp] = useState<AnalyzeResponse|undefined>();
+  const [llmBusy, setLlmBusy] = useState(false);
+  const [llmErr, setLlmErr] = useState<string|undefined>();
+
   const start = async () => {
     setBusy(true);
     const u = await api.upload({ title:"Demo", author_id:"u_demo", asset_url:"" });
@@ -20,6 +25,20 @@ export default function App(){
     const r = await api.rubric();
     setRubric(r);
     setBusy(false);
+  };
+
+  const analyzeLlm = async () => {
+    if(!designFile) return;
+    try {
+      setLlmBusy(true);
+      setLlmErr(undefined);
+      const resp = await api.analyzeLlm(designFile, "Explain this image", sid || "demo");
+      setLlmResp(resp);
+    } catch (e:any) {
+      setLlmErr(e.message || String(e));
+    } finally {
+      setLlmBusy(false);
+    }
   };
 
   const loadReport = async () => { if(!sid) return; const rep = await api.report(sid); setEvents(rep.events ?? []); };
@@ -36,6 +55,18 @@ export default function App(){
         {sid ? <div className="row">submission_id: <span className="mono pill">{sid}</span></div> : null}
       </div>
       {findings ? (<div className="card"><b>2) 자동 분석 결과</b><Findings items={findings.findings} /></div>) : null}
+      <div className="card">
+        <div className="row" style={{justifyContent:"space-between"}}>
+          <div><b>Upload & LLM Analyze</b></div>
+          <div className="row">
+            <input type="file" onChange={e=>setDesignFile(e.target.files?.[0])} />
+            <button className="btn" onClick={analyzeLlm} disabled={!designFile || llmBusy}>Analyze</button>
+          </div>
+        </div>
+        {llmBusy ? <div className="muted">Analyzing...</div> : null}
+        {llmErr ? <div style={{color:"#f77"}} className="muted">{llmErr}</div> : null}
+        {llmResp ? <Findings items={llmResp.findings} /> : null}
+      </div>
       {rubric && sid ? (<RubricForm rubric={rubric} submissionId={sid} onSubmitted={loadReport} />) : null}
       {sid ? (<div className="card">
         <div className="row" style={{justifyContent:"space-between"}}><b>3) Evidence Report</b><button className="btn" onClick={loadReport}>새로고침</button></div>
