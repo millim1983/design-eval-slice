@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 import json, re, time, sqlite3, datetime, base64, os
 from fastapi.responses import RedirectResponse
+from langchain.agents import AgentExecutor
 
 from app.schemas import (
     UploadResponse,
@@ -23,6 +25,7 @@ from app.core.paths import (
 
 from app.providers import ProviderFactory
 from app.rag import RagService
+from app.agent import build_agent, run_agent
 
 
 def init_db():
@@ -94,6 +97,8 @@ RUBRIC = {}
 _EXPERT_DB_URL = os.getenv("EXPERT_GUIDE_DB_URL", "")
 _EVAL_DB_URL = os.getenv("EVAL_INTERPRET_DB_URL", "")
 rag_service = RagService(_EXPERT_DB_URL, _EVAL_DB_URL)
+agent_executor: AgentExecutor | None = None
+
 
 def read_json_no_bom(p):
     return json.loads(p.read_text(encoding="utf-8-sig"))
@@ -106,6 +111,8 @@ async def lifespan(app: FastAPI):
     CHUNKS = load_guideline_chunks()
     RUBRIC = read_json_no_bom(RUBRIC_FILE)
     await rag_service.refresh()
+    global agent_executor
+    agent_executor = build_agent(rag_service)
     yield
     # 필요 시 종료(cleanup) 로직 작성 (지금은 없음)
 
@@ -150,6 +157,21 @@ async def rag_eval(payload: dict):
         return rag_service.query(query)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/rag-agent")
+async def rag_agent_endpoint(payload: dict) -> dict[str, str]:
+    """Run the LangChain agent to route ``query`` to tools."""
+    query = payload.get("query")
+    if not query:
+        raise HTTPException(status_code=400, detail="query required")
+    if agent_executor is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    try:
+        answer = await run_in_threadpool(lambda: run_agent(agent_executor, query))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"answer": answer}
 
 @app.post("/uploads", response_model=UploadResponse)
 async def uploads(
