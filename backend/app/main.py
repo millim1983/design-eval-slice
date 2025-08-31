@@ -32,6 +32,7 @@ from app.agent import build_agent, run_agent
 from app.security import mask_pii, detect_prompt_injection, filter_output
 from pydantic import ValidationError
 from langchain.output_parsers import PydanticOutputParser
+from app.core.config import AppConfig, load_config
 
 
 def init_db():
@@ -99,10 +100,9 @@ def load_guideline_chunks():
 CHUNKS = []
 RUBRIC = {}
 
-# External document indexes for RAG
-_EXPERT_DB_URL = os.getenv("EXPERT_GUIDE_DB_URL", "")
-_EVAL_DB_URL = os.getenv("EVAL_INTERPRET_DB_URL", "")
-rag_service = RagService(_EXPERT_DB_URL, _EVAL_DB_URL)
+# Loaded configuration
+CONFIG: AppConfig | None = None
+rag_service: RagService | None = None
 agent_executor: AgentExecutor | None = None
 
 
@@ -113,12 +113,20 @@ def read_json_no_bom(p):
 async def lifespan(app: FastAPI):
     # 여기서 기존 startup 작업 수행
     init_db()
-    global CHUNKS, RUBRIC
+    global CHUNKS, RUBRIC, CONFIG, rag_service, agent_executor
+    CONFIG = load_config()
     CHUNKS = load_guideline_chunks()
     RUBRIC = read_json_no_bom(RUBRIC_FILE)
-    await rag_service.refresh()
-    global agent_executor
-    agent_executor = build_agent(rag_service)
+    rag_service = RagService(
+        CONFIG.rag.expert_url,
+        CONFIG.rag.evaluation_url,
+        CONFIG.rag.timeout,
+    )
+    try:
+        await rag_service.refresh()
+    except Exception:
+        pass
+    agent_executor = build_agent(rag_service, CONFIG.models)
     yield
     # 필요 시 종료(cleanup) 로직 작성 (지금은 없음)
 
@@ -150,6 +158,8 @@ def search_hits(query: str, top_k: int = 3):
 
 @app.post("/rag-index/refresh")
 async def rag_index_refresh():
+    if rag_service is None:
+        raise HTTPException(status_code=503, detail="RAG not initialized")
     await rag_service.refresh()
     return {"ok": True}
 
@@ -162,6 +172,8 @@ async def rag_eval(payload: dict):
     if detect_prompt_injection(query):
         raise HTTPException(status_code=400, detail="Prompt injection detected")
     sanitized_query = mask_pii(query)
+    if rag_service is None:
+        raise HTTPException(status_code=503, detail="RAG not initialized")
     try:
         result = rag_service.query(sanitized_query)
     except RuntimeError as exc:

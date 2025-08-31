@@ -1,0 +1,3 @@
+expert_url: http://localhost:8001/docs
+evaluation_url: http://localhost:8002/docs
+timeout: 30
