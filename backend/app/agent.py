@@ -6,10 +6,12 @@ from typing import Callable
 
 from langchain.agents import AgentExecutor, AgentType, Tool, initialize_agent
 from langchain_community.llms import Ollama
-from langchain.schema import OutputParserException
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+from langchain.output_parsers import PydanticOutputParser
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+from pydantic import ValidationError
 
 from app.rag import RagService
+from app.schemas import AgentAnswer
 
 
 def _rag_tool_factory(rag: RagService) -> Callable[[str], str]:
@@ -42,13 +44,18 @@ def build_agent(rag: RagService) -> AgentExecutor:
     return initialize_agent(tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, handle_parsing_errors=True)
 
 
+parser = PydanticOutputParser(pydantic_object=AgentAnswer)
+FORMAT_INSTRUCTIONS = parser.get_format_instructions()
+
+
 @retry(
     reraise=True,
     stop=stop_after_attempt(3),
     wait=wait_fixed(1),
-    retry=retry_if_exception_type(OutputParserException),
+    retry=retry_if_exception_type(ValidationError),
 )
-def run_agent(agent: AgentExecutor, question: str) -> str:
-    """Execute ``agent`` with retries and light post-processing."""
-    output = agent.run(question)
-    return output.strip()
+def run_agent(agent: AgentExecutor, question: str) -> AgentAnswer:
+    """Execute ``agent`` with structured output parsing and retries."""
+    prompt = f"{question}\n{FORMAT_INSTRUCTIONS}"
+    output = agent.run(prompt)
+    return parser.parse(output)

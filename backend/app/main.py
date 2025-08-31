@@ -16,6 +16,9 @@ from app.schemas import (
     EvaluateResponse,
     AnalyzeFinding,
     Region,
+    LLMChatResponse,
+    StructuredError,
+    AgentAnswer,
 )
 
 from app.core.paths import (
@@ -23,10 +26,12 @@ from app.core.paths import (
     GUIDELINE_FILE, RUBRIC_FILE, ensure_dirs
 )
 
-from app.providers import ProviderFactory
+from app.providers import ProviderFactory, generate_structured
 from app.rag import RagService
 from app.agent import build_agent, run_agent
 from app.security import mask_pii, detect_prompt_injection, filter_output
+from pydantic import ValidationError
+from langchain.output_parsers import PydanticOutputParser
 
 
 def init_db():
@@ -179,12 +184,15 @@ async def rag_agent_endpoint(payload: dict) -> dict[str, str]:
     if agent_executor is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
     try:
-        answer = await run_in_threadpool(lambda: run_agent(agent_executor, sanitized_query))
+        result = await run_in_threadpool(lambda: run_agent(agent_executor, sanitized_query))
+    except ValidationError as exc:
+        err = StructuredError(error="Agent output validation failed")
+        raise HTTPException(status_code=502, detail=err.model_dump()) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-    if filter_output(answer):
+    if filter_output(result.answer):
         raise HTTPException(status_code=403, detail="Disallowed content")
-    answer = mask_pii(answer)
+    answer = mask_pii(result.answer)
     return {"answer": answer}
 
 @app.post("/uploads", response_model=UploadResponse)
@@ -265,17 +273,29 @@ async def chat(payload: ChatRequest) -> ChatResponse:
         provider = ProviderFactory.get(provider_name)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+    parser = PydanticOutputParser(pydantic_object=LLMChatResponse)
+    prompt = f"{sanitized_message}\n{parser.get_format_instructions()}"
     try:
-        raw = await provider.generate(sanitized_message, "llava:7b", images=[image_b64], stream=False)
+        parsed, raw = await generate_structured(
+            provider,
+            prompt,
+            "llava:7b",
+            parser,
+            images=[image_b64],
+            stream=False,
+        )
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
-    answer = raw.get("response", "").strip()
+    except ValidationError as exc:
+        err = StructuredError(error="Model output validation failed")
+        raise HTTPException(status_code=502, detail=err.model_dump()) from exc
+    answer = parsed.answer.strip()
     if filter_output(answer):
         raise HTTPException(status_code=403, detail="Disallowed content in response")
     masked_answer = mask_pii(answer)
     resp = ChatResponse(
         answer=answer,
-        citations=[],
+        citations=parsed.citations,
         model_version=raw.get("model", "llava:7b"),
         prompt_snapshot=sanitized_message,
     )
