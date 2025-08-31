@@ -3,10 +3,14 @@ services:
   api:
     build: ./backend
     ports: ["8000:8000"]
+  model-manager:
+    build: ./model_manager
+    ports: ["8001:8000"]
   web:
     build:
       context: ./frontend
       args:
         - VITE_API_BASE=/api
+        - VITE_MODEL_API_BASE=/model-manager
     ports: ["5173:80"]
-    depends_on: [api]
+    depends_on: [api, model-manager]

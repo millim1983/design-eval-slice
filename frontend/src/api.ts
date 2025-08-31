@@ -1,6 +1,12 @@
-﻿const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+const MODEL_API_BASE = import.meta.env.VITE_MODEL_API_BASE || "http://localhost:8001";
 async function j(method: string, path: string, body?: any) {
   const r = await fetch(`${API_BASE}${path}`, { method, headers: { "Content-Type": "application/json" }, body: body?JSON.stringify(body):undefined });
+  if (!r.ok) throw new Error(`${method} ${path} -> ${r.status}`);
+  return r.json();
+}
+async function jm(method: string, path: string, body?: any) {
+  const r = await fetch(`${MODEL_API_BASE}${path}`, { method, headers: { "Content-Type": "application/json" }, body: body?JSON.stringify(body):undefined });
   if (!r.ok) throw new Error(`${method} ${path} -> ${r.status}`);
   return r.json();
 }
@@ -11,5 +17,12 @@ export const api = {
   rubric: () => j("GET","/rubrics/aw_2025_kda/1.0.0"),
   evaluate: (rec:any) => j("POST","/evaluate",rec),
   report: (sid:string) => j("GET",`/report/${sid}`)
+};
+export const modelApi = {
+  list: (industry?:string) => jm("GET", industry ? `/models/${industry}` : "/models"),
+  register: (m:{industry:string;name:string;version:string;path:string;active?:boolean}) => jm("POST","/models",m),
+  update: (industry:string,name:string,m:{version?:string;path?:string;active?:boolean}) => jm("PUT",`/models/${industry}/${name}`,m),
+  stats: () => jm("GET","/stats"),
+  active: (industry:string) => jm("GET",`/models/${industry}/active`)
 };
 export default api;

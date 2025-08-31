@@ -3,7 +3,10 @@ services:
   api:
     image: ghcr.io/millim1983/design-eval-slice-api:latest
     ports: ["8000:8000"]
+  model-manager:
+    build: ./model_manager
+    ports: ["8001:8000"]
   web:
     image: ghcr.io/millim1983/design-eval-slice-web:latest
     ports: ["5173:80"]
-    depends_on: [api]
+    depends_on: [api, model-manager]

@@ -3,6 +3,7 @@ import api from "./api";
 import { RubricDSL, AnalyzeResponse, ReportEvent } from "./types";
 import Findings from "./components/Findings";
 import RubricForm from "./components/RubricForm";
+import ModelManagerAdmin from "./components/ModelManagerAdmin";
 
 export default function App(){
   const [sid, setSid] = useState<string>("");
@@ -10,6 +11,7 @@ export default function App(){
   const [findings, setFindings] = useState<AnalyzeResponse|undefined>();
   const [events, setEvents] = useState<ReportEvent[]>([]);
   const [busy, setBusy] = useState(false);
+  const [admin, setAdmin] = useState(false);
 
   const start = async () => {
     setBusy(true);
@@ -28,26 +30,36 @@ export default function App(){
   return (
     <div className="wrap">
       <h2>Design Evaluation Vertical Slice — <span className="muted">Frontend</span></h2>
-      <div className="card">
-        <div className="row" style={{justifyContent:"space-between"}}>
-          <div><b>1) 업로드→해석→루브릭 불러오기</b><div className="muted">버튼 한 번으로 백엔드 수직슬라이스 호출</div></div>
-          <button className="btn" onClick={start} disabled={busy}>Start Slice</button>
-        </div>
-        {sid ? <div className="row">submission_id: <span className="mono pill">{sid}</span></div> : null}
+      <div className="row" style={{marginBottom:16}}>
+        <button className="btn" onClick={()=>setAdmin(false)}>Evaluate</button>
+        <button className="btn" onClick={()=>setAdmin(true)} style={{marginLeft:8}}>Admin</button>
       </div>
-      {findings ? (<div className="card"><b>2) 자동 분석 결과</b><Findings items={findings.findings} /></div>) : null}
-      {rubric && sid ? (<RubricForm rubric={rubric} submissionId={sid} onSubmitted={loadReport} />) : null}
-      {sid ? (<div className="card">
-        <div className="row" style={{justifyContent:"space-between"}}><b>3) Evidence Report</b><button className="btn" onClick={loadReport}>새로고침</button></div>
-        <div className="muted">upload/analyze/evaluate 로그가 순서대로 보입니다.</div>
-        <div style={{marginTop:8}} />
-        {events.length ? events.map((e,i)=>(
-          <div className="card" key={i} style={{background:"#0e1530"}}>
-            <div className="row" style={{justifyContent:"space-between"}}><span className="pill">{e.kind}</span><span className="mono muted">{e.at}</span></div>
-            <pre className="mono" style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(e.payload,null,2)}</pre>
+      {admin ? (
+        <ModelManagerAdmin />
+      ) : (
+        <>
+        <div className="card">
+          <div className="row" style={{justifyContent:"space-between"}}>
+            <div><b>1) 업로드→해석→루브릭 불러오기</b><div className="muted">버튼 한 번으로 백엔드 수직슬라이스 호출</div></div>
+            <button className="btn" onClick={start} disabled={busy}>Start Slice</button>
           </div>
-        )) : <div className="muted">아직 이벤트가 없습니다.</div>}
-      </div>) : null}
+          {sid ? <div className="row">submission_id: <span className="mono pill">{sid}</span></div> : null}
+        </div>
+        {findings ? (<div className="card"><b>2) 자동 분석 결과</b><Findings items={findings.findings} /></div>) : null}
+        {rubric && sid ? (<RubricForm rubric={rubric} submissionId={sid} onSubmitted={loadReport} />) : null}
+        {sid ? (<div className="card">
+          <div className="row" style={{justifyContent:"space-between"}}><b>3) Evidence Report</b><button className="btn" onClick={loadReport}>새로고침</button></div>
+          <div className="muted">upload/analyze/evaluate 로그가 순서대로 보입니다.</div>
+          <div style={{marginTop:8}} />
+          {events.length ? events.map((e,i)=>(
+            <div className="card" key={i} style={{background:"#0e1530"}}>
+              <div className="row" style={{justifyContent:"space-between"}}><span className="pill">{e.kind}</span><span className="mono muted">{e.at}</span></div>
+              <pre className="mono" style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(e.payload,null,2)}</pre>
+            </div>
+          )) : <div className="muted">아직 이벤트가 없습니다.</div>}
+        </div>) : null}
+        </>
+      )}
     </div>
   );
 }
