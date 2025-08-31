@@ -10,15 +10,25 @@ export default function App(){
   const [imageFile, setImageFile] = useState<File|null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [error, setError] = useState("");
 
   const start = async () => {
     setBusy(true);
+    setError("");
+    setAnswer("");
     if(!imageFile) { setBusy(false); return; }
-    const u = await api.upload({ title:"Demo", author_id:"u_demo", file: imageFile });
-    setSid(u.submission_id);
-    const c = await api.chat(u.submission_id, question);
-    setAnswer(c.answer);
-    setBusy(false);
+    try {
+      const u = await api.upload({ title:"Demo", author_id:"u_demo", file: imageFile });
+      setSid(u.submission_id);
+      const c = await api.chat(u.submission_id, question);
+      setAnswer(c.answer);
+    } catch(err:any) {
+      let msg = err.message || String(err);
+      try { msg = JSON.parse(msg).detail ?? msg; } catch{}
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const loadReport = async () => { if(!sid) return; const rep = await api.report(sid); setEvents(rep.events ?? []); };
@@ -51,6 +61,7 @@ export default function App(){
         <input type="file" accept="image/*" onChange={e=>setImageFile(e.target.files?.[0]??null)} />
         <input type="text" placeholder="프롬프트" value={question} onChange={e=>setQuestion(e.target.value)} />
         {answer ? <div className="row">답변: <span>{answer}</span></div> : null}
+        {error ? <div className="row" style={{color:"red"}}>Error: <span>{error}</span></div> : null}
       </div>
       {sid ? <div className="card"><div className="row">submission_id: <span className="mono pill">{sid}</span></div></div> : null}
       {sid ? (<div className="card">
