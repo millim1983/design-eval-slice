@@ -22,6 +22,8 @@ from app.core.paths import (
 )
 
 from app.providers import ProviderFactory
+from app.rag import RagService
+
 
 def init_db():
     ensure_dirs()
@@ -88,6 +90,11 @@ def load_guideline_chunks():
 CHUNKS = []
 RUBRIC = {}
 
+# External document indexes for RAG
+_EXPERT_DB_URL = os.getenv("EXPERT_GUIDE_DB_URL", "")
+_EVAL_DB_URL = os.getenv("EVAL_INTERPRET_DB_URL", "")
+rag_service = RagService(_EXPERT_DB_URL, _EVAL_DB_URL)
+
 def read_json_no_bom(p):
     return json.loads(p.read_text(encoding="utf-8-sig"))
 
@@ -98,6 +105,7 @@ async def lifespan(app: FastAPI):
     global CHUNKS, RUBRIC
     CHUNKS = load_guideline_chunks()
     RUBRIC = read_json_no_bom(RUBRIC_FILE)
+    await rag_service.refresh()
     yield
     # 필요 시 종료(cleanup) 로직 작성 (지금은 없음)
 
@@ -125,6 +133,23 @@ def search_hits(query: str, top_k: int = 3):
             "version": ch["version"]
         })
     return hits
+
+
+@app.post("/rag-index/refresh")
+async def rag_index_refresh():
+    await rag_service.refresh()
+    return {"ok": True}
+
+
+@app.post("/rag-eval")
+async def rag_eval(payload: dict):
+    query = payload.get("query")
+    if not query:
+        raise HTTPException(status_code=400, detail="query required")
+    try:
+        return rag_service.query(query)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 @app.post("/uploads", response_model=UploadResponse)
 async def uploads(
@@ -202,6 +227,7 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     try:
+
         raw = await provider.generate(message, "llava:7b", images=[image_b64], stream=False)
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
