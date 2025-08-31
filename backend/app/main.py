@@ -132,7 +132,11 @@ async def uploads(
     )
     image_b64: str | None = None
     if file is not None:
+        if file.content_type not in {"image/jpeg", "image/png"}:
+            raise HTTPException(400, "Only JPEG/PNG images allowed")
         content = await file.read()
+        if len(content) > 2 * 1024 * 1024:
+            raise HTTPException(413, "Image too large")
         image_b64 = base64.b64encode(content).decode("utf-8")
     payload = {
         "title": title,
