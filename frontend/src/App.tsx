@@ -3,6 +3,7 @@ import api from "./api";
 import { RubricDSL, AnalyzeResponse, ReportEvent } from "./types";
 import Findings from "./components/Findings";
 import RubricForm from "./components/RubricForm";
+import JudgePanel from "./components/JudgePanel";
 
 export default function App(){
   const [sid, setSid] = useState<string>("");
@@ -10,11 +11,13 @@ export default function App(){
   const [findings, setFindings] = useState<AnalyzeResponse|undefined>();
   const [events, setEvents] = useState<ReportEvent[]>([]);
   const [busy, setBusy] = useState(false);
+  const [assigned, setAssigned] = useState<{id:string; title:string}[]>([]);
 
   const start = async () => {
     setBusy(true);
     const u = await api.upload({ title:"Demo", author_id:"u_demo", asset_url:"" });
     setSid(u.submission_id);
+    setAssigned([{ id: u.submission_id, title: "Demo Submission" }]);
     const a = await api.analyze(u.submission_id);
     setFindings(a);
     const r = await api.rubric();
@@ -37,6 +40,7 @@ export default function App(){
       </div>
       {findings ? (<div className="card"><b>2) 자동 분석 결과</b><Findings items={findings.findings} /></div>) : null}
       {rubric && sid ? (<RubricForm rubric={rubric} submissionId={sid} onSubmitted={loadReport} />) : null}
+      {assigned.length ? (<JudgePanel submissions={assigned} />) : null}
       {sid ? (<div className="card">
         <div className="row" style={{justifyContent:"space-between"}}><b>3) Evidence Report</b><button className="btn" onClick={loadReport}>새로고침</button></div>
         <div className="muted">upload/analyze/evaluate 로그가 순서대로 보입니다.</div>

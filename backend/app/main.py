@@ -218,9 +218,45 @@ def get_rubric(award_id: str, version: str):
 
 @app.post("/evaluate")
 def evaluate(record: dict):
+    """Store a judge's evaluation and return aggregated results.
+
+    The incoming record is expected to contain edited scores and reasons
+    from a judge. Each call persists the record to the evidence ledger and
+    then recomputes an aggregate of all submitted evaluations for the
+    submission.
+    """
     sid = record.get("submission_id", "unknown")
+    # Persist the raw evaluation for traceability
     log_evidence("evaluate", sid, record)
-    return {"ok": True}
+
+    # Aggregate all evaluations for this submission
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT payload_json FROM evidence_ledger WHERE submission_id=? AND kind='evaluate'",
+        (sid,)
+    )
+    rows = [json.loads(p) for (p,) in cur.fetchall()]
+    conn.close()
+
+    aggregates: dict[str, dict[str, list]] = {}
+    for rec in rows:
+        for s in rec.get("scores", []):
+            cid = s.get("criteria_id")
+            if not cid:
+                continue
+            ag = aggregates.setdefault(cid, {"scores": [], "reasons": []})
+            if "score" in s:
+                ag["scores"].append(float(s["score"]))
+            if s.get("reason"):
+                ag["reasons"].append(s["reason"])
+
+    agg_scores = {
+        cid: sum(v["scores"]) / len(v["scores"]) if v["scores"] else 0.0
+        for cid, v in aggregates.items()
+    }
+    agg_reasons = {cid: v["reasons"] for cid, v in aggregates.items() if v["reasons"]}
+
+    return {"ok": True, "aggregate": {"scores": agg_scores, "reasons": agg_reasons}}
 
 @app.get("/report/{submission_id}")
 def report(submission_id: str):
