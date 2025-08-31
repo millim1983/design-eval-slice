@@ -11,4 +11,5 @@
   6) pip install -r requirements.txt
   7) uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
   8) http://localhost:8000/docs
+  9) `frontend/.env.example`을 `.env`로 복사하고 필요한 경우 `VITE_API_URL`을 수정
 - Docker: backend/에서 `docker compose up --build`
