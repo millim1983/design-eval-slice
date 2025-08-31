@@ -25,7 +25,10 @@ async def generate(prompt: str, model: str, **kwargs: Any) -> Dict[str, Any]:
     url = f"{OLLAMA_BASE_URL}/api/generate"
     payload: Dict[str, Any] = {"model": model, "prompt": prompt, **kwargs}
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        # llava:7b can take a while on first load; extend timeout so the
+        # frontend doesn't see spurious errors while the model warms up.
+        timeout = httpx.Timeout(60.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
     except httpx.ConnectError as exc:
