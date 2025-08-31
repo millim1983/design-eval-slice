@@ -1,11 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-import json, re, time, sqlite3, datetime
+import json, re, time, sqlite3, datetime, base64
 from fastapi.responses import RedirectResponse
 
 from app.schemas import (
-    UploadRequest,
     UploadResponse,
     AnalyzeRequest,
     AnalyzeResponse,
@@ -21,6 +20,8 @@ from app.core.paths import (
     SCHEMAS_DIR, SEEDS_DIR, DB_PATH,
     GUIDELINE_FILE, RUBRIC_FILE, ensure_dirs
 )
+
+from app.ollama_client import generate
 
 app = FastAPI(title="Design Evaluation Vertical Slice", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -123,17 +124,30 @@ def search_hits(query: str, top_k: int = 3):
     return hits
 
 @app.post("/uploads", response_model=UploadResponse)
-def uploads(payload: UploadRequest) -> UploadResponse:
+async def uploads(
+    title: str = Form("Unnamed"),
+    author_id: str = Form("unknown"),
+    file: UploadFile | None = File(None),
+) -> UploadResponse:
     sid = f"sub_{int(time.time() * 1000)}"
     out = UploadResponse(
         submission_id=sid,
         created_at=datetime.datetime.utcnow(),
     )
+    image_b64: str | None = None
+    if file is not None:
+        content = await file.read()
+        image_b64 = base64.b64encode(content).decode("utf-8")
+    payload = {
+        "title": title,
+        "author_id": author_id,
+        "filename": file.filename if file else None,
+    }
     log_evidence(
         "upload",
         sid,
-        payload.model_dump(),
-        image=payload.asset_url,
+        payload,
+        image=image_b64,
     )
     return out
 
@@ -162,24 +176,31 @@ def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest) -> ChatResponse:
+async def chat(payload: ChatRequest) -> ChatResponse:
     sid = payload.submission_id
     message = payload.message
-    needs_evidence = any(k in message.lower() for k in ["근거", "why", "guideline", "§", "contrast", "wcag"])
-    citations = []
-    if needs_evidence:
-        citations = [h["citation_id"] for h in search_hits("contrast")]
-    answer = (
-        "Contrast looks borderline. See guideline citations." if citations else
-        "General suggestion: improve visual hierarchy with size/weight/position."
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT image FROM evidence_ledger WHERE submission_id=? AND kind='upload' ORDER BY id DESC LIMIT 1",
+        (sid,),
     )
+    row = cur.fetchone()
+    conn.close()
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="Image not found for submission")
+    image_b64 = row[0]
+    try:
+        raw = await generate(message, "llava:7b", images=[image_b64], stream=False)
+    except HTTPException:
+        raise
+    answer = raw.get("response", "").strip()
     resp = ChatResponse(
         answer=answer,
-        citations=citations,
-        model_version="lmm_stub_v0",
-        prompt_snapshot="Conversational QA prompt…",
+        citations=[],
+        model_version=raw.get("model", "llava:7b"),
+        prompt_snapshot=message,
     )
-    log_evidence("chat", sid, {"message": message, **resp.model_dump()})
+    log_evidence("chat", sid, {"message": message, **resp.model_dump()}, raw_output=json.dumps(raw))
     return resp
 
 @app.post("/search-guideline")

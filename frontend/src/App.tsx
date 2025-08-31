@@ -1,26 +1,23 @@
 import { useEffect, useState } from "react";
 import api from "./api";
-import { RubricDSL, AnalyzeResponse, ReportEvent } from "./types";
-import Findings from "./components/Findings";
-import RubricForm from "./components/RubricForm";
-import JudgeReview from "./components/JudgeReview";
+import { ReportEvent } from "./types";
 
 export default function App(){
   const [sid, setSid] = useState<string>("");
-  const [rubric, setRubric] = useState<RubricDSL|undefined>();
-  const [findings, setFindings] = useState<AnalyzeResponse|undefined>();
   const [events, setEvents] = useState<ReportEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [orgLog, setOrgLog] = useState<string[]>([]);
+  const [imageFile, setImageFile] = useState<File|null>(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
 
   const start = async () => {
     setBusy(true);
-    const u = await api.upload({ title:"Demo", author_id:"u_demo", asset_url:"" });
+    if(!imageFile) { setBusy(false); return; }
+    const u = await api.upload({ title:"Demo", author_id:"u_demo", file: imageFile });
     setSid(u.submission_id);
-    const a = await api.analyze({ submission_id: u.submission_id });
-    setFindings(a);
-    const r = await api.rubric();
-    setRubric(r);
+    const c = await api.chat(u.submission_id, question);
+    setAnswer(c.answer);
     setBusy(false);
   };
 
@@ -48,14 +45,14 @@ export default function App(){
       <h2>Design Evaluation Vertical Slice — <span className="muted">Frontend</span></h2>
       <div className="card">
         <div className="row" style={{justifyContent:"space-between"}}>
-          <div><b>1) 업로드→해석→루브릭 불러오기</b><div className="muted">버튼 한 번으로 백엔드 수직슬라이스 호출</div></div>
-          <button className="btn" onClick={start} disabled={busy}>Start Slice</button>
+          <div><b>이미지 질문하기</b><div className="muted">이미지를 업로드하고 프롬프트로 질의합니다.</div></div>
+          <button className="btn" onClick={start} disabled={busy || !imageFile}>Ask</button>
         </div>
-        {sid ? <div className="row">submission_id: <span className="mono pill">{sid}</span></div> : null}
+        <input type="file" accept="image/*" onChange={e=>setImageFile(e.target.files?.[0]??null)} />
+        <input type="text" placeholder="프롬프트" value={question} onChange={e=>setQuestion(e.target.value)} />
+        {answer ? <div className="row">답변: <span>{answer}</span></div> : null}
       </div>
-      {findings ? (<div className="card"><b>2) 자동 분석 결과</b><Findings items={findings.findings} /></div>) : null}
-      {findings && sid ? (<JudgeReview submissionId={sid} initialFindings={findings.findings} onSubmitted={loadReport} />) : null}
-      {rubric && sid ? (<RubricForm rubric={rubric} submissionId={sid} onSubmitted={loadReport} />) : null}
+      {sid ? <div className="card"><div className="row">submission_id: <span className="mono pill">{sid}</span></div></div> : null}
       {sid ? (<div className="card">
         <div className="row" style={{justifyContent:"space-between"}}><b>4) Evidence Report</b><button className="btn" onClick={loadReport}>새로고침</button></div>
         <div className="muted">upload/analyze/evaluate 로그가 순서대로 보입니다.</div>
