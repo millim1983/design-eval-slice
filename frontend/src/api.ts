@@ -29,8 +29,21 @@ upload: (p: {
     title: string;
     author_id: string;
     asset_url?: string;
+    file?: File;
     meta?: any;
-  }) => j<{ submission_id: string; created_at: string }>("POST", "/uploads", p),
+  }) => {
+    if (p.file) {
+      const form = new FormData();
+      form.append("title", p.title);
+      form.append("author_id", p.author_id);
+      form.append("file", p.file);
+      return fetch("/uploads", { method: "POST", body: form }).then((r) => {
+        if (!r.ok) throw new Error("upload failed");
+        return r.json();
+      });
+    }
+    return j<{ submission_id: string; created_at: string }>("POST", "/uploads", p);
+  },
 
   analyze: (submission_id: string) =>
     j<AnalyzeResponse>("POST", "/analyze", { submission_id }),
