@@ -1,33 +1,96 @@
-/// <reference types="vite/client" />
 import type {
-  UploadRequest,
-  UploadResponse,
-  AnalyzeRequest,
-  AnalyzeResponse,
-  ChatRequest,
-  ChatResponse,
   RubricDSL,
-  EvaluateRequest,
-  EvaluateResponse,
+  AnalyzeResponse,
+  ReportEvent,
+  Project,
+  Submission,
+  Judge,
+  Assignment,
 } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
-async function j<TRes>(method: string, path: string, body?: any): Promise<TRes> {
-  const r = await fetch(`${API_BASE}${path}`, {
+const j = async <T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> => {
+  const res = await fetch(path, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error(`${method} ${path} -> ${r.status}`);
-  return r.json();
-}
-export const api = {
-  upload: (p: UploadRequest) => j<UploadResponse>("POST", "/uploads", p),
-  analyze: (p: AnalyzeRequest) => j<AnalyzeResponse>("POST", "/analyze", p),
-  chat: (p: ChatRequest) => j<ChatResponse>("POST", "/chat", p),
-  search: (q: string) => j<any>("POST", "/search-guideline", { award_id: "aw_2025_kda", query: q }),
-  rubric: () => j<RubricDSL>("GET", "/rubrics/aw_2025_kda/1.0.0"),
-  evaluate: (rec: EvaluateRequest) => j<EvaluateResponse>("POST", "/evaluate", rec),
-  report: (sid: string) => j<any>("GET", `/report/${sid}`),
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json() as Promise<T>;
 };
+
+export const api = {
+upload: (p: {
+    title: string;
+    author_id: string;
+    asset_url?: string;
+    meta?: any;
+  }) => j<{ submission_id: string; created_at: string }>("POST", "/uploads", p),
+
+  analyze: (submission_id: string) =>
+    j<AnalyzeResponse>("POST", "/analyze", { submission_id }),
+
+  chat: (submission_id: string, message: string) =>
+    j<{
+      answer: string;
+      citations: string[];
+      model_version: string;
+      prompt_snapshot: string;
+    }>("POST", "/chat", { submission_id, message }),
+
+  search: (q: string) =>
+    j<{ hits: any[] }>("POST", "/search-guideline", {
+      award_id: "aw_2025_kda",
+      query: q,
+    }),
+
+  rubric: () => j<RubricDSL>("GET", "/rubrics/aw_2025_kda/1.0.0"),
+
+  evaluate: (rec: any) => j<any>("POST", "/evaluate", rec),
+
+  report: (sid: string) =>
+    j<{ submission_id: string; events: ReportEvent[] }>(
+      "GET",
+      `/report/${sid}`,
+    ),
+
+  createProject: (name: string) => j<Project>("POST", "/projects", { name }),
+  listProjects: () =>
+      j<{ projects: Project[] }>("GET", "/projects").then((r) => r.projects),
+  createSubmission: (project_id: number, title: string) =>
+    j<Submission>("POST", `/projects/${project_id}/submissions`, { title }),
+  listSubmissions: (project_id: number) =>
+    j<{ submissions: Submission[] }>(
+      "GET",
+      `/projects/${project_id}/submissions`,
+    ).then((r) => r.submissions),
+
+  createJudge: (name: string) => j<Judge>("POST", "/judges", { name }),
+  listJudges: () =>
+      j<{ judges: Judge[] }>("GET", "/judges").then((r) => r.judges),
+
+  assignJudge: (submission_id: number, judge_id: number) =>
+    j<Assignment>("POST", "/assignments", { submission_id, judge_id }),
+
+  recordScore: (assignment_id: number, score: number) =>
+    j<{ assignment_id: number; score: number }>(
+      "PUT",
+      `/assignments/${assignment_id}/score`,
+      { score },
+    ),
+
+  finalScore: (submission_id: number) =>
+    j<{ submission_id: number; final_score: number | null }>(
+      "GET",
+      `/submissions/${submission_id}/final-score`,
+    ),
+};
+
 export default api;
+
+  

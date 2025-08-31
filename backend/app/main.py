@@ -28,17 +28,31 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 def init_db():
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
-    sql = (SCHEMAS_DIR / "evidence_ledger.schema.sql").read_text(encoding="utf-8")
-    conn.executescript(sql)
+    for name in [
+        "evidence_ledger.schema.sql",
+        "projects.schema.sql",
+        "submissions.schema.sql",
+        "judges.schema.sql",
+        "assignments.schema.sql",
+    ]:
+        sql = (SCHEMAS_DIR / name).read_text(encoding="utf-8")
+        conn.executescript(sql)
     conn.commit()
     conn.close()
 
-def log_evidence(kind: str, submission_id: str, payload: dict, user_id: str | None = None):
+def log_evidence(
+    kind: str,
+    submission_id: str,
+    payload: dict,
+    user_id: str | None = None,
+    raw_output: str | None = None,
+    image: str | None = None,
+):
     conn = sqlite3.connect(DB_PATH)
     now = datetime.datetime.utcnow().isoformat() + "Z"
     conn.execute(
-        "INSERT INTO evidence_ledger(kind, submission_id, user_id, at, payload_json) VALUES(?,?,?,?,?)",
-        (kind, submission_id, user_id, now, json.dumps(payload, ensure_ascii=False))
+        "INSERT INTO evidence_ledger(kind, submission_id, user_id, at, payload_json, raw_output, image) VALUES(?,?,?,?,?,?,?)",
+        (kind, submission_id, user_id, now, json.dumps(payload, ensure_ascii=False), raw_output, image)
     )
     conn.commit()
     conn.close()
@@ -110,13 +124,19 @@ def search_hits(query: str, top_k: int = 3):
 
 @app.post("/uploads", response_model=UploadResponse)
 def uploads(payload: UploadRequest) -> UploadResponse:
-    sid = f"sub_{int(time.time()*1000)}"
+    sid = f"sub_{int(time.time() * 1000)}"
     out = UploadResponse(
         submission_id=sid,
         created_at=datetime.datetime.utcnow(),
     )
-    log_evidence("upload", sid, payload.model_dump())
+    log_evidence(
+        "upload",
+        sid,
+        payload.model_dump(),
+        image=payload.asset_url,
+    )
     return out
+
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
@@ -136,8 +156,10 @@ def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
         model_version="lmm_stub_v0",
         prompt_snapshot="Analyze visual hierarchy, contrast, typography…",
     )
-    log_evidence("analyze", sid, resp.model_dump())
+    raw_output = resp.model_dump_json(ensure_ascii=False)
+    log_evidence("analyze", sid, resp.model_dump(), raw_output=raw_output)
     return resp
+
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
@@ -165,6 +187,137 @@ def search_guideline(payload: dict):
     q = payload.get("query", "")
     return {"hits": search_hits(q) if q else []}
 
+
+# --- Project & Judging Management Endpoints ---
+
+@app.post("/projects")
+def create_project(payload: dict):
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO projects(name, created_at) VALUES(?, ?)",
+        (name, now)
+    )
+    conn.commit()
+    pid = cur.lastrowid
+    conn.close()
+    return {"project_id": pid, "name": name, "created_at": now}
+
+
+@app.get("/projects")
+def list_projects():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("SELECT id, name, created_at FROM projects ORDER BY id ASC")
+    rows = [dict(project_id=i, name=n, created_at=c) for (i, n, c) in cur.fetchall()]
+    conn.close()
+    return {"projects": rows}
+
+
+@app.post("/projects/{project_id}/submissions")
+def create_submission(project_id: int, payload: dict):
+    title = payload.get("title")
+    if not title:
+        raise HTTPException(status_code=400, detail="title required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO submissions(project_id, title, created_at) VALUES(?, ?, ?)",
+        (project_id, title, now)
+    )
+    conn.commit()
+    sid = cur.lastrowid
+    conn.close()
+    return {"submission_id": sid, "project_id": project_id, "title": title, "created_at": now}
+
+
+@app.get("/projects/{project_id}/submissions")
+def list_submissions(project_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT id, title, created_at FROM submissions WHERE project_id=? ORDER BY id ASC",
+        (project_id,)
+    )
+    rows = [dict(submission_id=i, title=t, created_at=c) for (i, t, c) in cur.fetchall()]
+    conn.close()
+    return {"submissions": rows}
+
+
+@app.post("/judges")
+def create_judge(payload: dict):
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO judges(name, created_at) VALUES(?, ?)",
+        (name, now)
+    )
+    conn.commit()
+    jid = cur.lastrowid
+    conn.close()
+    return {"judge_id": jid, "name": name, "created_at": now}
+
+
+@app.get("/judges")
+def list_judges():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("SELECT id, name, created_at FROM judges ORDER BY id ASC")
+    rows = [dict(judge_id=i, name=n, created_at=c) for (i, n, c) in cur.fetchall()]
+    conn.close()
+    return {"judges": rows}
+
+
+@app.post("/assignments")
+def assign_judge(payload: dict):
+    submission_id = payload.get("submission_id")
+    judge_id = payload.get("judge_id")
+    if not submission_id or not judge_id:
+        raise HTTPException(status_code=400, detail="submission_id and judge_id required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO assignments(submission_id, judge_id, created_at) VALUES(?, ?, ?)",
+        (submission_id, judge_id, now)
+    )
+    conn.commit()
+    aid = cur.lastrowid
+    conn.close()
+    return {"assignment_id": aid, "submission_id": submission_id, "judge_id": judge_id, "created_at": now}
+
+
+@app.put("/assignments/{assignment_id}/score")
+def record_score(assignment_id: int, payload: dict):
+    score = payload.get("score")
+    if score is None:
+        raise HTTPException(status_code=400, detail="score required")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "UPDATE assignments SET score=? WHERE id=?",
+        (float(score), assignment_id)
+    )
+    conn.commit()
+    conn.close()
+    return {"assignment_id": assignment_id, "score": float(score)}
+
+
+@app.get("/submissions/{submission_id}/final-score")
+def final_score(submission_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT score FROM assignments WHERE submission_id=? AND score IS NOT NULL",
+        (submission_id,)
+    )
+    scores = [row[0] for row in cur.fetchall() if row[0] is not None]
+    conn.close()
+    if not scores:
+        return {"submission_id": submission_id, "final_score": None}
+    avg = sum(scores) / len(scores)
+    return {"submission_id": submission_id, "final_score": avg}
+
 @app.get("/rubrics/{award_id}/{version}")
 def get_rubric(award_id: str, version: str):
     if RUBRIC.get("award_id") == award_id and RUBRIC.get("version") == version:
@@ -180,10 +333,48 @@ def evaluate(record: EvaluateRequest) -> EvaluateResponse:
 @app.get("/report/{submission_id}")
 def report(submission_id: str):
     conn = sqlite3.connect(DB_PATH)
-    cur = conn.execute("SELECT kind, at, payload_json FROM evidence_ledger WHERE submission_id=? ORDER BY id ASC", (submission_id,))
-    items = [{"kind": k, "at": at, "payload": json.loads(p)} for (k, at, p) in cur.fetchall()]
+    cur = conn.execute(
+        "SELECT kind, at, payload_json, raw_output, image FROM evidence_ledger WHERE submission_id=? ORDER BY id ASC",
+        (submission_id,),
+    )
+    items = [
+        {
+            "kind": k,
+            "at": at,
+            "payload": json.loads(p),
+            "raw_output": r,
+            "image": img,
+        }
+        for (k, at, p, r, img) in cur.fetchall()
+    ]
     conn.close()
     return {"submission_id": submission_id, "events": items}
+
+
+@app.get("/dataset/export")
+def dataset_export():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    dataset = []
+    cur.execute("SELECT submission_id, image FROM evidence_ledger WHERE kind='upload'")
+    uploads = cur.fetchall()
+    for sid, image in uploads:
+        cur.execute(
+            "SELECT payload_json FROM evidence_ledger WHERE submission_id=? AND kind='analyze' ORDER BY id DESC LIMIT 1",
+            (sid,),
+        )
+        row = cur.fetchone()
+        findings = json.loads(row[0]).get("findings") if row else None
+        cur.execute(
+            "SELECT payload_json FROM evidence_ledger WHERE submission_id=? AND kind='evaluate' ORDER BY id DESC LIMIT 1",
+            (sid,),
+        )
+        row = cur.fetchone()
+        corrections = json.loads(row[0]) if row else None
+        if image and findings and corrections:
+            dataset.append({"image": image, "findings": findings, "corrections": corrections})
+    conn.close()
+    return {"data": dataset}
 
 @app.get("/", include_in_schema=False)
 def root():
