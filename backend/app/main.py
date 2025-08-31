@@ -26,6 +26,7 @@ from app.core.paths import (
 from app.providers import ProviderFactory
 from app.rag import RagService
 from app.agent import build_agent, run_agent
+from app.security import mask_pii, detect_prompt_injection, filter_output
 
 
 def init_db():
@@ -153,10 +154,17 @@ async def rag_eval(payload: dict):
     query = payload.get("query")
     if not query:
         raise HTTPException(status_code=400, detail="query required")
+    if detect_prompt_injection(query):
+        raise HTTPException(status_code=400, detail="Prompt injection detected")
+    sanitized_query = mask_pii(query)
     try:
-        return rag_service.query(query)
+        result = rag_service.query(sanitized_query)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+    if filter_output(json.dumps(result, ensure_ascii=False)):
+        raise HTTPException(status_code=403, detail="Disallowed content")
+    result = json.loads(mask_pii(json.dumps(result, ensure_ascii=False)))
+    return result
 
 
 @app.post("/rag-agent")
@@ -165,12 +173,18 @@ async def rag_agent_endpoint(payload: dict) -> dict[str, str]:
     query = payload.get("query")
     if not query:
         raise HTTPException(status_code=400, detail="query required")
+    if detect_prompt_injection(query):
+        raise HTTPException(status_code=400, detail="Prompt injection detected")
+    sanitized_query = mask_pii(query)
     if agent_executor is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
     try:
-        answer = await run_in_threadpool(lambda: run_agent(agent_executor, query))
+        answer = await run_in_threadpool(lambda: run_agent(agent_executor, sanitized_query))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+    if filter_output(answer):
+        raise HTTPException(status_code=403, detail="Disallowed content")
+    answer = mask_pii(answer)
     return {"answer": answer}
 
 @app.post("/uploads", response_model=UploadResponse)
@@ -233,6 +247,9 @@ def analyze(payload: AnalyzeRequest) -> AnalyzeResponse:
 async def chat(payload: ChatRequest) -> ChatResponse:
     sid = payload.submission_id
     message = payload.message
+    if detect_prompt_injection(message):
+        raise HTTPException(status_code=400, detail="Prompt injection detected")
+    sanitized_message = mask_pii(message)
     conn = sqlite3.connect(DB_PATH)
     cur = conn.execute(
         "SELECT image FROM evidence_ledger WHERE submission_id=? AND kind='upload' ORDER BY id DESC LIMIT 1",
@@ -249,18 +266,27 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     try:
-
-        raw = await provider.generate(message, "llava:7b", images=[image_b64], stream=False)
+        raw = await provider.generate(sanitized_message, "llava:7b", images=[image_b64], stream=False)
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     answer = raw.get("response", "").strip()
+    if filter_output(answer):
+        raise HTTPException(status_code=403, detail="Disallowed content in response")
+    masked_answer = mask_pii(answer)
     resp = ChatResponse(
         answer=answer,
         citations=[],
         model_version=raw.get("model", "llava:7b"),
-        prompt_snapshot=message,
+        prompt_snapshot=sanitized_message,
     )
-    log_evidence("chat", sid, {"message": message, **resp.model_dump()}, raw_output=json.dumps(raw))
+    log_payload = resp.model_dump()
+    log_payload["answer"] = masked_answer
+    log_evidence(
+        "chat",
+        sid,
+        {"message": sanitized_message, **log_payload},
+        raw_output=mask_pii(json.dumps(raw, ensure_ascii=False)),
+    )
     return resp
 
 @app.post("/search-guideline")
