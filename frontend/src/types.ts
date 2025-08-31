@@ -14,6 +14,11 @@ export type Submission = { submission_id:number; project_id?:number; title:strin
 export type Judge = { judge_id:number; name:string; created_at:string };
 export type Assignment = { assignment_id:number; submission_id:number; judge_id:number; score?:number|null; created_at:string };
 
+export type RagResponse = {
+  answer: string;
+  sources: Array<{ doc_id: string; text: string }>;
+};
+
 export type EvaluateRequest = {
   submission_id: string;
   judge_id: string;

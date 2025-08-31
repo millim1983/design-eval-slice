@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "./api";
 import { ReportEvent } from "./types";
+import RagEval from "./components/RagEval";
 
 export default function App(){
   const [sid, setSid] = useState<string>("");
@@ -115,6 +116,7 @@ export default function App(){
           </ul>
         ) : <div className="muted">No actions yet.</div>}
       </div>
+      <RagEval />
     </div>
   );
 }
