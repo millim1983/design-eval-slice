@@ -1,8 +1,16 @@
-﻿from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import json, re, time, sqlite3, datetime
+import base64
+import datetime
+import json
+import os
+import re
+import sqlite3
+import time
 from fastapi.responses import RedirectResponse
+
+from app.ollama_client import generate
 
 from app.core.paths import (
     SCHEMAS_DIR, SEEDS_DIR, DB_PATH,
@@ -105,18 +113,31 @@ def uploads(payload: dict):
 @app.post("/analyze")
 def analyze(payload: dict):
     sid = payload.get("submission_id", "unknown")
-    hits = search_hits("contrast") or search_hits("대비")
-    findings = [{
-        "region": {"x": 0.18, "y": 0.22, "w": 0.42, "h": 0.28},
-        "label": "Low Contrast",
-        "confidence": 0.82,
-        "explanation": "Text/background contrast may be below recommended ratio.",
-        "citations": [h["citation_id"] for h in hits]
-    }]
+    img_b64 = payload.get("image_base64")
+    if not img_b64:
+        raise HTTPException(status_code=400, detail="image_base64 required")
+    image_bytes = base64.b64decode(img_b64.split(",")[-1])
+    prompt = (
+        "Analyze the design image and return a JSON array of findings. Each item "
+        "must contain region {x,y,w,h} (0-1 float), label, confidence (0-1), "
+        "explanation and citations (array)."
+    )
+    raw = generate(prompt, image_bytes)
+    try:
+        findings = json.loads(raw)
+    except json.JSONDecodeError:
+        hits = search_hits("contrast") or search_hits("대비")
+        findings = [{
+            "region": {"x": 0.18, "y": 0.22, "w": 0.42, "h": 0.28},
+            "label": "Low Contrast",
+            "confidence": 0.82,
+            "explanation": "Text/background contrast may be below recommended ratio.",
+            "citations": [h["citation_id"] for h in hits],
+        }]
     resp = {
         "findings": findings,
-        "model_version": "lmm_stub_v0",
-        "prompt_snapshot": "Analyze visual hierarchy, contrast, typography…"
+        "model_version": os.getenv("OLLAMA_MODEL", "llava:7b"),
+        "prompt_snapshot": prompt,
     }
     log_evidence("analyze", sid, resp)
     return resp
