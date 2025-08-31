@@ -24,6 +24,7 @@ from app.core.paths import (
 from app.providers import ProviderFactory
 from app.rag import RagService
 
+
 def init_db():
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
@@ -226,6 +227,7 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     try:
+
         raw = await provider.generate(message, "llava:7b", images=[image_b64], stream=False)
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
