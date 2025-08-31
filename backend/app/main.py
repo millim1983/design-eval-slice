@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-import json, re, time, sqlite3, datetime, base64
+import json, re, time, sqlite3, datetime, base64, os
 from fastapi.responses import RedirectResponse
 
 from app.schemas import (
@@ -21,7 +21,7 @@ from app.core.paths import (
     GUIDELINE_FILE, RUBRIC_FILE, ensure_dirs
 )
 
-from app.ollama_client import generate
+from app.providers import ProviderFactory
 
 def init_db():
     ensure_dirs()
@@ -196,8 +196,13 @@ async def chat(payload: ChatRequest) -> ChatResponse:
     if not row or not row[0]:
         raise HTTPException(status_code=404, detail="Image not found for submission")
     image_b64 = row[0]
+    provider_name = os.getenv("LLM_PROVIDER", "ollama")
     try:
-        raw = await generate(message, "llava:7b", images=[image_b64], stream=False)
+        provider = ProviderFactory.get(provider_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    try:
+        raw = await provider.generate(message, "llava:7b", images=[image_b64], stream=False)
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     answer = raw.get("response", "").strip()
