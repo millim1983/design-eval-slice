@@ -9,6 +9,7 @@ from typing import Any, List
 
 import httpx
 from llama_index.core import Document, VectorStoreIndex
+from app.observability import span
 
 
 async def fetch_documents(url: str, timeout: float) -> List[Document]:
@@ -51,19 +52,20 @@ class RagService:
 
     def query(self, question: str) -> dict[str, Any]:
         """Query both indexes and aggregate answers."""
-        if not self._expert_index or not self._evaluation_index:
-            raise RuntimeError("Indexes not initialized")
-        expert_res = self._expert_index.as_query_engine().query(question)
-        eval_res = self._evaluation_index.as_query_engine().query(question)
-        sources = []
-        for res in (expert_res, eval_res):
-            for sn in getattr(res, "source_nodes", []) or []:
-                sources.append({
-                    "doc_id": sn.node.doc_id,
-                    "text": sn.node.get_content(),
-                })
-        answer = "\n".join([
-            getattr(expert_res, "response", str(expert_res)),
-            getattr(eval_res, "response", str(eval_res)),
-        ])
-        return {"answer": answer.strip(), "sources": sources}
+        with span("rag.query"):
+            if not self._expert_index or not self._evaluation_index:
+                raise RuntimeError("Indexes not initialized")
+            expert_res = self._expert_index.as_query_engine().query(question)
+            eval_res = self._evaluation_index.as_query_engine().query(question)
+            sources = []
+            for res in (expert_res, eval_res):
+                for sn in getattr(res, "source_nodes", []) or []:
+                    sources.append({
+                        "doc_id": sn.node.doc_id,
+                        "text": sn.node.get_content(),
+                    })
+            answer = "\n".join([
+                getattr(expert_res, "response", str(expert_res)),
+                getattr(eval_res, "response", str(eval_res)),
+            ])
+            return {"answer": answer.strip(), "sources": sources}

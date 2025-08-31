@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, ValidationError
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_fixed
+from app.observability import span
 
 logger = logging.getLogger(__name__)
 
@@ -35,28 +36,29 @@ class OllamaProvider(Provider):
         self.base_url = base_url or os.getenv("OLLAMA_URL", "http://localhost:11434")
 
     async def generate(self, prompt: str, model: str, **kwargs: Any) -> Dict[str, Any]:
-        url = f"{self.base_url}/api/generate"
-        payload: Dict[str, Any] = {"model": model, "prompt": prompt, **kwargs}
-        try:
-            timeout = httpx.Timeout(60.0, connect=10.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-        except httpx.ConnectError as exc:
-            logger.error("Ollama server unreachable at %s", url)
-            raise HTTPException(
-                status_code=503,
-                detail=f"Ollama server is unreachable at {url}",
-            ) from exc
-        except httpx.ReadTimeout as exc:
-            raise HTTPException(status_code=504, detail="Ollama server timed out") from exc
-        except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Ollama request failed: {exc}") from exc
+        with span("ollama.generate"):
+            url = f"{self.base_url}/api/generate"
+            payload: Dict[str, Any] = {"model": model, "prompt": prompt, **kwargs}
+            try:
+                timeout = httpx.Timeout(60.0, connect=10.0)
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.post(url, json=payload)
+                    response.raise_for_status()
+            except httpx.ConnectError as exc:
+                logger.error("Ollama server unreachable at %s", url)
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Ollama server is unreachable at {url}",
+                ) from exc
+            except httpx.ReadTimeout as exc:
+                raise HTTPException(status_code=504, detail="Ollama server timed out") from exc
+            except httpx.HTTPError as exc:
+                raise HTTPException(status_code=502, detail=f"Ollama request failed: {exc}") from exc
 
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise HTTPException(status_code=502, detail="Invalid response from Ollama server") from exc
+            try:
+                return response.json()
+            except ValueError as exc:
+                raise HTTPException(status_code=502, detail="Invalid response from Ollama server") from exc
 
 
 class ProviderFactory:
@@ -101,6 +103,7 @@ async def generate_structured(
         retry=retry_if_exception_type(ValidationError),
     ):
         with attempt:
-            raw = await provider.generate(prompt, model, **kwargs)
-            parsed = parser.parse(raw.get("response", ""))
-            return parsed, raw
+            with span("generate_structured"):
+                raw = await provider.generate(prompt, model, **kwargs)
+                parsed = parser.parse(raw.get("response", ""))
+                return parsed, raw

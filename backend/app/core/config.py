@@ -20,12 +20,19 @@ class RagConfig(BaseModel):
     timeout: float = 30.0
 
 
+class ObservabilityConfig(BaseModel):
+    """Configuration block for observability hooks."""
+
+    enabled: bool = False
+
+
 class AppConfig(BaseModel):
     models: ModelsConfig = ModelsConfig()
     rag: RagConfig = RagConfig()
     prompts: Dict[str, Any] = {}
     policy: Dict[str, Any] = {}
     lora: Dict[str, Any] = {}
+    observability: ObservabilityConfig = ObservabilityConfig()
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -44,10 +51,14 @@ def load_config() -> AppConfig:
     prompts = _load_yaml(Path(os.getenv("PROMPTS_CONFIG", base / "prompts.yaml")))
     policy = _load_yaml(Path(os.getenv("POLICY_CONFIG", base / "policy.yaml")))
     lora = _load_yaml(Path(os.getenv("LORA_CONFIG", base / "lora.yaml")))
+    observability = _load_yaml(
+        Path(os.getenv("OBSERVABILITY_CONFIG", base / "observability.yaml"))
+    )
     return AppConfig(
         models=ModelsConfig(**models),
         rag=RagConfig(**rag),
         prompts=prompts,
         policy=policy,
         lora=lora,
+        observability=ObservabilityConfig(**observability),
     )

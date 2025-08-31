@@ -24,6 +24,7 @@ application starts. Default sample files are provided:
 - `prompts.yaml`
 - `policy.yaml`
 - `rag.yaml`
+- `observability.yaml`
 
 Each file can be overridden by pointing an environment variable to an alternate
 path:
@@ -34,10 +35,20 @@ LORA_CONFIG=/path/to/lora.yaml
 PROMPTS_CONFIG=/path/to/prompts.yaml
 POLICY_CONFIG=/path/to/policy.yaml
 RAG_CONFIG=/path/to/rag.yaml
+OBSERVABILITY_CONFIG=/path/to/observability.yaml
 ```
 
 These files allow customizing model endpoints, LoRA adapters, prompts, security
-policies, and RAG document sources without changing code.
+policies, RAG document sources, and observability options without changing code.
+
+To enable tracing with [Langfuse](https://langfuse.com/), set ``enabled: true``
+in ``observability.yaml`` and provide the following environment variables:
+
+```
+LANGFUSE_PUBLIC_KEY=<public key>
+LANGFUSE_SECRET_KEY=<secret key>
+LANGFUSE_HOST=<optional host URL>
+```
 
 ## API Endpoints
 
