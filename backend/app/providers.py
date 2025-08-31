@@ -9,10 +9,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import logging
 import os
-from typing import Any, Dict, Type
+from typing import Any, Dict, Tuple, Type
 
 import httpx
 from fastapi import HTTPException
+from langchain.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, ValidationError
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +83,24 @@ class ProviderFactory:
         if provider_cls is None:
             raise ValueError(f"Unknown provider: {name}")
         return provider_cls()
+
+
+async def generate_structured(
+    provider: Provider,
+    prompt: str,
+    model: str,
+    parser: PydanticOutputParser,
+    **kwargs: Any,
+) -> Tuple[BaseModel, Dict[str, Any]]:
+    """Call ``provider.generate`` and parse output via ``parser`` with retries."""
+
+    async for attempt in AsyncRetrying(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(1),
+        retry=retry_if_exception_type(ValidationError),
+    ):
+        with attempt:
+            raw = await provider.generate(prompt, model, **kwargs)
+            parsed = parser.parse(raw.get("response", ""))
+            return parsed, raw
