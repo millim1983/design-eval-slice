@@ -5,8 +5,10 @@ import json, re, time, sqlite3, datetime
 from fastapi.responses import RedirectResponse
 from app.core.paths import (
     SCHEMAS_DIR, SEEDS_DIR, DB_PATH,
-    GUIDELINE_FILE, RUBRIC_FILE, ensure_dirs
+    GUIDELINE_FILE, RUBRIC_FILE, ensure_dirs, DATASET_DIR
 )
+from pathlib import Path
+import shutil
 from fastapi import UploadFile, File, Form
 
 
@@ -17,8 +19,11 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 def init_db():
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
-    sql = (SCHEMAS_DIR / "evidence_ledger.schema.sql").read_text(encoding="utf-8")
-    conn.executescript(sql)
+    for name in ["evidence_ledger.schema.sql", "training_dataset.schema.sql"]:
+        p = SCHEMAS_DIR / name
+        if p.exists():
+            sql = p.read_text(encoding="utf-8")
+            conn.executescript(sql)
     conn.commit()
     conn.close()
 
@@ -28,6 +33,16 @@ def log_evidence(kind: str, submission_id: str, payload: dict, user_id: str | No
     conn.execute(
         "INSERT INTO evidence_ledger(kind, submission_id, user_id, at, payload_json) VALUES(?,?,?,?,?)",
         (kind, submission_id, user_id, now, json.dumps(payload, ensure_ascii=False))
+    )
+    conn.commit()
+    conn.close()
+
+def log_training_sample(submission_id: str, image_path: Path, payload: dict):
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    conn.execute(
+        "INSERT INTO training_dataset(submission_id, image_path, evaluation_json, created_at) VALUES(?,?,?,?)",
+        (submission_id, str(image_path), json.dumps(payload, ensure_ascii=False), now)
     )
     conn.commit()
     conn.close()
@@ -162,6 +177,17 @@ async def analyze_llm(
     except Exception:
         pass
 
+    # 데이터셋에 저장
+    try:
+        DATASET_DIR.mkdir(parents=True, exist_ok=True)
+        ext = Path(file.filename or "image").suffix or ".png"
+        dest = DATASET_DIR / f"{submission_id}_{int(time.time()*1000)}{ext}"
+        with open(dest, "wb") as f:
+            f.write(image_bytes)
+        log_training_sample(submission_id, dest, resp)
+    except Exception:
+        pass
+
     return resp
 
 
@@ -220,6 +246,17 @@ def get_rubric(award_id: str, version: str):
 def evaluate(record: dict):
     sid = record.get("submission_id", "unknown")
     log_evidence("evaluate", sid, record)
+    img_path = record.get("image_path")
+    if img_path:
+        try:
+            src = Path(img_path)
+            if src.exists():
+                DATASET_DIR.mkdir(parents=True, exist_ok=True)
+                dest = DATASET_DIR / f"{sid}_{int(time.time()*1000)}{src.suffix}"
+                shutil.copyfile(src, dest)
+                log_training_sample(sid, dest, record)
+        except Exception:
+            pass
     return {"ok": True}
 
 @app.get("/report/{submission_id}")

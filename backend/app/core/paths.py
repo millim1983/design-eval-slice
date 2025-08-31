@@ -10,9 +10,11 @@ DATA_DIR = Path(os.getenv("DATA_DIR", APP_DIR / "data"))
 SCHEMAS_DIR = Path(os.getenv("SCHEMAS_DIR", APP_DIR / "schemas"))
 SEEDS_DIR = Path(os.getenv("SEEDS_DIR", APP_DIR / "seeds"))
 DB_PATH = Path(os.getenv("DB_PATH", DATA_DIR / "slice.db"))
+DATASET_DIR = Path(os.getenv("DATASET_DIR", DATA_DIR / "dataset"))
 
 GUIDELINE_FILE = Path(os.getenv("GUIDELINE_FILE", SEEDS_DIR / "guidelines" / "kda_2025_guideline.md"))
 RUBRIC_FILE = Path(os.getenv("RUBRIC_FILE", SEEDS_DIR / "rubrics" / "kda_2025_v1.json"))
 
 def ensure_dirs():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DATASET_DIR.mkdir(parents=True, exist_ok=True)
