@@ -16,6 +16,13 @@ from app.schemas import (
     EvaluateResponse,
     AnalyzeFinding,
     Region,
+    VisionRequest,
+    VisionResponse,
+    RagEvalRequest,
+    RagEvalResponse,
+    RagCitation,
+    ModerateRequest,
+    ModerateResponse,
     LLMChatResponse,
     StructuredError,
     AgentAnswer,
@@ -164,11 +171,9 @@ async def rag_index_refresh():
     return {"ok": True}
 
 
-@app.post("/rag-eval")
-async def rag_eval(payload: dict):
-    query = payload.get("query")
-    if not query:
-        raise HTTPException(status_code=400, detail="query required")
+@app.post("/rag-eval", response_model=RagEvalResponse)
+async def rag_eval(payload: RagEvalRequest) -> RagEvalResponse:
+    query = payload.query
     if detect_prompt_injection(query):
         raise HTTPException(status_code=400, detail="Prompt injection detected")
     sanitized_query = mask_pii(query)
@@ -181,7 +186,8 @@ async def rag_eval(payload: dict):
     if filter_output(json.dumps(result, ensure_ascii=False)):
         raise HTTPException(status_code=403, detail="Disallowed content")
     result = json.loads(mask_pii(json.dumps(result, ensure_ascii=False)))
-    return result
+    citations = [RagCitation(doc_id=s.get("doc_id", ""), text=s.get("text", "")) for s in result.get("sources", [])]
+    return RagEvalResponse(answer=result.get("answer", ""), citations=citations)
 
 
 @app.post("/rag-agent")
@@ -238,6 +244,36 @@ async def uploads(
         image=image_b64,
     )
     return out
+
+
+@app.post("/analyze-vision", response_model=VisionResponse)
+async def analyze_vision(
+    file: UploadFile = File(...),
+    prompt: str = Form("Describe the image"),
+) -> VisionResponse:
+    if detect_prompt_injection(prompt):
+        raise HTTPException(status_code=400, detail="Prompt injection detected")
+    sanitized_prompt = mask_pii(prompt)
+    if file.content_type not in {"image/jpeg", "image/png"}:
+        raise HTTPException(400, "Only JPEG/PNG images allowed")
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(413, "Image too large")
+    image_b64 = base64.b64encode(content).decode("utf-8")
+    provider_name = os.getenv("LLM_PROVIDER", "ollama")
+    try:
+        provider = ProviderFactory.get(provider_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    try:
+        raw = await provider.generate(sanitized_prompt, "llava:7b", images=[image_b64])
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    answer = raw.get("response", "").strip()
+    if filter_output(answer):
+        raise HTTPException(status_code=403, detail="Disallowed content in response")
+    masked_answer = mask_pii(answer)
+    return VisionResponse(answer=masked_answer, model_version=raw.get("model", "llava:7b"))
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
@@ -320,6 +356,16 @@ async def chat(payload: ChatRequest) -> ChatResponse:
         raw_output=mask_pii(json.dumps(raw, ensure_ascii=False)),
     )
     return resp
+
+
+@app.post("/moderate", response_model=ModerateResponse)
+def moderate(payload: ModerateRequest) -> ModerateResponse:
+    reasons: list[str] = []
+    if detect_prompt_injection(payload.input):
+        reasons.append("prompt_injection")
+    if payload.output and filter_output(payload.output):
+        reasons.append("disallowed_output")
+    return ModerateResponse(compliant=not reasons, reasons=reasons)
 
 @app.post("/search-guideline")
 def search_guideline(payload: dict):
