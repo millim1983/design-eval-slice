@@ -10,10 +10,6 @@ from app.core.paths import (
 from fastapi import UploadFile, File, Form
 
 
-
-app = FastAPI(title="Design Evaluation Vertical Slice", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
 def init_db():
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
