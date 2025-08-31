@@ -15,8 +15,15 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 def init_db():
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH)
-    sql = (SCHEMAS_DIR / "evidence_ledger.schema.sql").read_text(encoding="utf-8")
-    conn.executescript(sql)
+    for name in [
+        "evidence_ledger.schema.sql",
+        "projects.schema.sql",
+        "submissions.schema.sql",
+        "judges.schema.sql",
+        "assignments.schema.sql",
+    ]:
+        sql = (SCHEMAS_DIR / name).read_text(encoding="utf-8")
+        conn.executescript(sql)
     conn.commit()
     conn.close()
 
@@ -139,6 +146,137 @@ def chat(payload: dict):
 def search_guideline(payload: dict):
     q = payload.get("query", "")
     return {"hits": search_hits(q) if q else []}
+
+
+# --- Project & Judging Management Endpoints ---
+
+@app.post("/projects")
+def create_project(payload: dict):
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO projects(name, created_at) VALUES(?, ?)",
+        (name, now)
+    )
+    conn.commit()
+    pid = cur.lastrowid
+    conn.close()
+    return {"project_id": pid, "name": name, "created_at": now}
+
+
+@app.get("/projects")
+def list_projects():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("SELECT id, name, created_at FROM projects ORDER BY id ASC")
+    rows = [dict(project_id=i, name=n, created_at=c) for (i, n, c) in cur.fetchall()]
+    conn.close()
+    return {"projects": rows}
+
+
+@app.post("/projects/{project_id}/submissions")
+def create_submission(project_id: int, payload: dict):
+    title = payload.get("title")
+    if not title:
+        raise HTTPException(status_code=400, detail="title required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO submissions(project_id, title, created_at) VALUES(?, ?, ?)",
+        (project_id, title, now)
+    )
+    conn.commit()
+    sid = cur.lastrowid
+    conn.close()
+    return {"submission_id": sid, "project_id": project_id, "title": title, "created_at": now}
+
+
+@app.get("/projects/{project_id}/submissions")
+def list_submissions(project_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT id, title, created_at FROM submissions WHERE project_id=? ORDER BY id ASC",
+        (project_id,)
+    )
+    rows = [dict(submission_id=i, title=t, created_at=c) for (i, t, c) in cur.fetchall()]
+    conn.close()
+    return {"submissions": rows}
+
+
+@app.post("/judges")
+def create_judge(payload: dict):
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO judges(name, created_at) VALUES(?, ?)",
+        (name, now)
+    )
+    conn.commit()
+    jid = cur.lastrowid
+    conn.close()
+    return {"judge_id": jid, "name": name, "created_at": now}
+
+
+@app.get("/judges")
+def list_judges():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("SELECT id, name, created_at FROM judges ORDER BY id ASC")
+    rows = [dict(judge_id=i, name=n, created_at=c) for (i, n, c) in cur.fetchall()]
+    conn.close()
+    return {"judges": rows}
+
+
+@app.post("/assignments")
+def assign_judge(payload: dict):
+    submission_id = payload.get("submission_id")
+    judge_id = payload.get("judge_id")
+    if not submission_id or not judge_id:
+        raise HTTPException(status_code=400, detail="submission_id and judge_id required")
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    cur = conn.execute(
+        "INSERT INTO assignments(submission_id, judge_id, created_at) VALUES(?, ?, ?)",
+        (submission_id, judge_id, now)
+    )
+    conn.commit()
+    aid = cur.lastrowid
+    conn.close()
+    return {"assignment_id": aid, "submission_id": submission_id, "judge_id": judge_id, "created_at": now}
+
+
+@app.put("/assignments/{assignment_id}/score")
+def record_score(assignment_id: int, payload: dict):
+    score = payload.get("score")
+    if score is None:
+        raise HTTPException(status_code=400, detail="score required")
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "UPDATE assignments SET score=? WHERE id=?",
+        (float(score), assignment_id)
+    )
+    conn.commit()
+    conn.close()
+    return {"assignment_id": assignment_id, "score": float(score)}
+
+
+@app.get("/submissions/{submission_id}/final-score")
+def final_score(submission_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "SELECT score FROM assignments WHERE submission_id=? AND score IS NOT NULL",
+        (submission_id,)
+    )
+    scores = [row[0] for row in cur.fetchall() if row[0] is not None]
+    conn.close()
+    if not scores:
+        return {"submission_id": submission_id, "final_score": None}
+    avg = sum(scores) / len(scores)
+    return {"submission_id": submission_id, "final_score": avg}
 
 @app.get("/rubrics/{award_id}/{version}")
 def get_rubric(award_id: str, version: str):
