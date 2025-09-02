@@ -131,10 +131,7 @@ async def lifespan(app: FastAPI):
         CONFIG.rag.evaluation_url,
         CONFIG.rag.timeout,
     )
-    try:
-        await rag_service.refresh()
-    except Exception:
-        pass
+    await rag_service.refresh()
     agent_executor = build_agent(rag_service, CONFIG.models)
     yield
     # 필요 시 종료(cleanup) 로직 작성 (지금은 없음)
@@ -169,7 +166,10 @@ def search_hits(query: str, top_k: int = 3):
 async def rag_index_refresh():
     if rag_service is None:
         raise HTTPException(status_code=503, detail="RAG not initialized")
-    await rag_service.refresh()
+    ok, err = await rag_service.refresh()
+    if not ok:
+        status = 502 if isinstance(err, RuntimeError) else 503
+        raise HTTPException(status_code=status, detail=str(err))
     return {"ok": True}
 
 
