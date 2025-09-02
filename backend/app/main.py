@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
-import json, re, time, sqlite3, datetime, base64, os
+import json, re, time, sqlite3, datetime, base64, os, asyncio
 from fastapi.responses import RedirectResponse
 from langchain.agents import AgentExecutor
 import logging
@@ -332,6 +332,8 @@ async def chat(payload: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=500, detail=str(exc))
     parser = PydanticOutputParser(pydantic_object=LLMChatResponse)
     prompt = f"{sanitized_message}\n{parser.get_format_instructions()}"
+    start_time = time.monotonic()
+    logging.info("generate_structured start")
     try:
         parsed, raw = await generate_structured(
             provider,
@@ -340,12 +342,34 @@ async def chat(payload: ChatRequest) -> ChatResponse:
             parser,
             images=[image_b64],
             stream=False,
+            timeout=60,
         )
     except HTTPException as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+        logging.info(
+            "generate_structured failed in %.2f seconds",
+            time.monotonic() - start_time,
+        )
+        if exc.status_code == 504:
+            raise HTTPException(status_code=504, detail=exc.detail)
+        raise
+    except (asyncio.TimeoutError, TimeoutError) as exc:
+        logging.info(
+            "generate_structured timed out in %.2f seconds",
+            time.monotonic() - start_time,
+        )
+        raise HTTPException(status_code=504, detail="LLM call timed out") from exc
     except ValidationError as exc:
+        logging.info(
+            "generate_structured failed in %.2f seconds",
+            time.monotonic() - start_time,
+        )
         err = StructuredError(error="Model output validation failed")
         raise HTTPException(status_code=502, detail=err.model_dump()) from exc
+    else:
+        logging.info(
+            "generate_structured completed in %.2f seconds",
+            time.monotonic() - start_time,
+        )
     answer = parsed.answer.strip()
     if filter_output(answer):
         raise HTTPException(status_code=403, detail="Disallowed content in response")

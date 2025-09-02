@@ -84,13 +84,37 @@ upload: (p: {
     });
   },
 
-  chat: (submission_id: string, message: string) =>
-    j<{
-      answer: string;
-      citations: string[];
-      model_version: string;
-      prompt_snapshot: string;
-    }>("POST", "/chat", { submission_id, message }),
+  chat: async (submission_id: string, message: string) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await fetch(API_BASE + "/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submission_id, message }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(`Server error: ${msg || res.statusText}`);
+      }
+      return (res.json() as Promise<{
+        answer: string;
+        citations: string[];
+        model_version: string;
+        prompt_snapshot: string;
+      }>);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error("Network timeout");
+      }
+      throw new Error(
+        `Network error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  },
 
   search: (q: string) =>
     j<{ hits: any[] }>("POST", "/search-guideline", {
