@@ -3,6 +3,8 @@ uvicorn[standard]
 httpx
 python-multipart
 llama-index
-langchain
 langchain-community
 pyyaml
+langchain>=0.3.1
+langchain-core>=0.3
+langchain-ollama>=0.1
