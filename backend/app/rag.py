@@ -20,8 +20,11 @@ async def fetch_documents(url: str, timeout: float) -> List[Document]:
     databases can expose a compatible API.
     """
     async with httpx.AsyncClient() as client:
-        resp = await client.get(url, timeout=timeout)
-        resp.raise_for_status()
+        try:
+            resp = await client.get(url, timeout=timeout)
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            raise RuntimeError("fetch failed") from e
         items: List[dict[str, Any]] = resp.json()
     docs: List[Document] = []
     for i, item in enumerate(items):
@@ -41,10 +44,16 @@ class RagService:
         self._expert_index: VectorStoreIndex | None = None
         self._evaluation_index: VectorStoreIndex | None = None
 
-    async def refresh(self) -> None:
+    async def refresh(self) -> tuple[bool, Exception | None]:
         """(Re)build indexes by fetching latest documents."""
-        self._expert_index = await self._build_index(self.expert_url)
-        self._evaluation_index = await self._build_index(self.evaluation_url)
+        try:
+            expert_index = await self._build_index(self.expert_url)
+            evaluation_index = await self._build_index(self.evaluation_url)
+        except Exception as e:  # pragma: no cover - propagated
+            return False, e
+        self._expert_index = expert_index
+        self._evaluation_index = evaluation_index
+        return True, None
 
     async def _build_index(self, url: str) -> VectorStoreIndex:
         docs = await fetch_documents(url, self.timeout)

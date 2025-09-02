@@ -173,7 +173,10 @@ def search_hits(query: str, top_k: int = 3):
 async def rag_index_refresh():
     if rag_service is None or not rag_ready:
         raise HTTPException(status_code=503, detail="RAG not initialized")
-    await rag_service.refresh()
+    ok, err = await rag_service.refresh()
+    if not ok:
+        status = 502 if isinstance(err, RuntimeError) else 503
+        raise HTTPException(status_code=status, detail=str(err))
     return {"ok": True}
 
 
