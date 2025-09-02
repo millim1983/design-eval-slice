@@ -5,6 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 import json, re, time, sqlite3, datetime, base64, os
 from fastapi.responses import RedirectResponse
 from langchain.agents import AgentExecutor
+import logging
 
 from app.schemas import (
     UploadResponse,
@@ -112,6 +113,7 @@ RUBRIC = {}
 CONFIG: AppConfig | None = None
 rag_service: RagService | None = None
 agent_executor: AgentExecutor | None = None
+rag_ready: bool = False
 
 
 def read_json_no_bom(p):
@@ -121,7 +123,7 @@ def read_json_no_bom(p):
 async def lifespan(app: FastAPI):
     # 여기서 기존 startup 작업 수행
     init_db()
-    global CHUNKS, RUBRIC, CONFIG, rag_service, agent_executor
+    global CHUNKS, RUBRIC, CONFIG, rag_service, agent_executor, rag_ready
     CONFIG = load_config()
     init_observability(CONFIG.observability)
     CHUNKS = load_guideline_chunks()
@@ -131,7 +133,12 @@ async def lifespan(app: FastAPI):
         CONFIG.rag.evaluation_url,
         CONFIG.rag.timeout,
     )
-    await rag_service.refresh()
+    rag_ready = False
+    try:
+        await rag_service.refresh()
+        rag_ready = True
+    except Exception:
+        logging.exception("Failed to refresh RAG index")
     agent_executor = build_agent(rag_service, CONFIG.models)
     yield
     # 필요 시 종료(cleanup) 로직 작성 (지금은 없음)
@@ -164,7 +171,7 @@ def search_hits(query: str, top_k: int = 3):
 
 @app.post("/rag-index/refresh")
 async def rag_index_refresh():
-    if rag_service is None:
+    if rag_service is None or not rag_ready:
         raise HTTPException(status_code=503, detail="RAG not initialized")
     ok, err = await rag_service.refresh()
     if not ok:
@@ -179,7 +186,7 @@ async def rag_eval(payload: RagEvalRequest) -> RagEvalResponse:
     if detect_prompt_injection(query):
         raise HTTPException(status_code=400, detail="Prompt injection detected")
     sanitized_query = mask_pii(query)
-    if rag_service is None:
+    if rag_service is None or not rag_ready:
         raise HTTPException(status_code=503, detail="RAG not initialized")
     try:
         result = rag_service.query(sanitized_query)
